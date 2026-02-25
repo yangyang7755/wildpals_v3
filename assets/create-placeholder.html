@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head><title>Create Assets</title></head>
+<body>
+<canvas id="icon" width="1024" height="1024"></canvas>
+<canvas id="splash" width="1284" height="2778"></canvas>
+<canvas id="adaptive" width="1024" height="1024"></canvas>
+<canvas id="favicon" width="48" height="48"></canvas>
+<script>
+function createAsset(canvasId, text, fontSize) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#4A7C59';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${fontSize}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width/2, canvas.height/2);
+  
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = canvasId + '.png';
+    a.click();
+  });
+}
+
+createAsset('icon', 'W', 200);
+setTimeout(() => createAsset('splash', 'Wildpals', 300), 100);
+setTimeout(() => createAsset('adaptive', 'W', 200), 200);
+setTimeout(() => createAsset('favicon', 'W', 24), 300);
+</script>
+</body>
+</html>

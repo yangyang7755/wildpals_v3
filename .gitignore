@@ -24,4 +24,24 @@ dist-ssr
 *.sw?
 
 .config/
-!.env
+
+# Environment variables (IMPORTANT - contains secrets!)
+.env
+.env.local
+.env.production
+
+# Expo
+.expo/
+.expo-shared/
+
+# Database backups
+*.backup
+*.backup.gz
+
+# Kiro AI files (optional - can keep for team)
+.kiro/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
