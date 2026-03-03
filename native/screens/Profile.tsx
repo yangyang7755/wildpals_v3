@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useState, useCallback, useEffect } from 'react';
+import ReportModal from '../components/ReportModal';
+import BlockingService from '../services/BlockingService';
 
 interface UserSport {
   sport: string;
@@ -48,6 +50,8 @@ export default function Profile() {
   const [selectedTab, setSelectedTab] = useState<'cycling' | 'climbing' | 'running'>('cycling');
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   const loadProfileData = async () => {
     if (!user) return;

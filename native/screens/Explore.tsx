@@ -53,6 +53,9 @@ export default function Explore() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [joinMessage, setJoinMessage] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<'all' | 'London' | 'Oxford' | 'Boston'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   useEffect(() => {
     loadActivities();
@@ -86,9 +89,37 @@ export default function Explore() {
 
       if (error) throw error;
 
-      // Fetch join request statuses for current user
-      if (user && data) {
-        const activityIds = data.map(a => a.id);
+      // Filter out private club activities that user doesn't have access to
+      let filteredData = data || [];
+      
+      if (user) {
+        // Get user's club memberships
+        const { data: userClubMemberships } = await supabase
+          .from('club_members')
+          .select('club_id')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+
+        const userClubIds = new Set(
+          (userClubMemberships || []).map(m => m.club_id)
+        );
+
+        // Filter activities: show public activities OR private activities where user is a club member
+        filteredData = data?.filter(activity => {
+          // If not club-only, show it
+          if (!activity.club_members_only) return true;
+          
+          // If club-only, check if user is member of any of the visible clubs
+          if (activity.visible_to_clubs && Array.isArray(activity.visible_to_clubs)) {
+            return activity.visible_to_clubs.some((clubId: string) => userClubIds.has(clubId));
+          }
+          
+          // If club_members_only is true but no clubs specified, hide it
+          return false;
+        }) || [];
+
+        // Fetch join request statuses for current user
+        const activityIds = filteredData.map(a => a.id);
         const { data: joinRequests } = await supabase
           .from('join_requests')
           .select('activity_id, status')
@@ -100,14 +131,16 @@ export default function Explore() {
           (joinRequests || []).map(jr => [jr.activity_id, jr.status])
         );
 
-        const activitiesWithStatus = data.map(activity => ({
+        const activitiesWithStatus = filteredData.map(activity => ({
           ...activity,
           joinRequestStatus: joinRequestMap.get(activity.id) || null,
         }));
 
         setActivities(activitiesWithStatus);
       } else {
-        setActivities(data || []);
+        // If no user logged in, only show public activities
+        filteredData = data?.filter(activity => !activity.club_members_only) || [];
+        setActivities(filteredData);
       }
     } catch (error) {
       console.error('Error loading activities:', error);
@@ -127,7 +160,50 @@ export default function Explore() {
       (activity.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (activity.location || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = selectedType === 'all' || activity.type === selectedType;
-    return matchesSearch && matchesType;
+    
+    // Date filtering
+    const activityDate = new Date(activity.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let matchesDate = true;
+    if (dateFilter === 'today') {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      matchesDate = activityDate >= today && activityDate < tomorrow;
+    } else if (dateFilter === 'week') {
+      const nextWeek = new Date(today);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      matchesDate = activityDate >= today && activityDate < nextWeek;
+    } else if (dateFilter === 'month') {
+      const nextMonth = new Date(today);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      matchesDate = activityDate >= today && activityDate < nextMonth;
+    }
+    
+    // Location filtering
+    let matchesLocation = true;
+    if (selectedLocation !== 'all') {
+      matchesLocation = (activity.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+    }
+    
+    return matchesSearch && matchesType && matchesDate && matchesLocation;
+  });
+
+  // Sort activities: selected location first (if not 'all'), then by date
+  const sortedActivities = [...filteredActivities].sort((a, b) => {
+    // If specific location selected, prioritize those activities
+    if (selectedLocation !== 'all') {
+      const aMatchesLocation = (a.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+      const bMatchesLocation = (b.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+      
+      // Local activities come first
+      if (aMatchesLocation && !bMatchesLocation) return -1;
+      if (!aMatchesLocation && bMatchesLocation) return 1;
+    }
+    
+    // Then sort by date
+    return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
   const getActivityIcon = (type: string) => {
@@ -242,6 +318,18 @@ export default function Explore() {
         onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: item.id })}
         activeOpacity={0.7}
       >
+        {/* Activity Type Label */}
+        {(item as any).activity_type === 'recurrent' && (
+          <View style={styles.activityTypeLabel}>
+            <Text style={styles.activityTypeLabelText}>🔄 RECURRENT</Text>
+          </View>
+        )}
+        {(item as any).activity_type === 'multi_day' && (
+          <View style={[styles.activityTypeLabel, styles.activityTypeLabelMultiDay]}>
+            <Text style={styles.activityTypeLabelText}>📅 MULTI-DAY</Text>
+          </View>
+        )}
+        
         <View style={styles.activityHeader}>
           <Text style={styles.activityIcon}>{getActivityIcon(item.type)}</Text>
           <View style={styles.activityInfo}>
@@ -291,7 +379,7 @@ export default function Explore() {
           <>
             {item.climbing_type && (
               <Text style={styles.activityMeta}>
-                🧗 {item.climbing_type.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                🧗 {item.climbing_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
               </Text>
             )}
             {item.climbing_level && (
@@ -339,16 +427,52 @@ export default function Explore() {
         <Text style={styles.headerTitle}>Explore</Text>
       </View>
 
-      <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search activities..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      <View style={styles.searchRow}>
+        <View style={styles.searchContainer}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search activities..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.locationButton}
+          onPress={() => setShowLocationPicker(!showLocationPicker)}
+        >
+          <Text style={styles.locationButtonText}>
+            {selectedLocation === 'all' ? '📍 All' : `📍 ${selectedLocation}`}
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {showLocationPicker && (
+        <View style={styles.locationPicker}>
+          {['all', 'London', 'Oxford', 'Boston'].map((location) => (
+            <TouchableOpacity
+              key={location}
+              style={[
+                styles.locationOption,
+                selectedLocation === location && styles.locationOptionActive
+              ]}
+              onPress={() => {
+                setSelectedLocation(location as any);
+                setShowLocationPicker(false);
+              }}
+            >
+              <Text style={[
+                styles.locationOptionText,
+                selectedLocation === location && styles.locationOptionTextActive
+              ]}>
+                {location === 'all' ? 'All Locations' : location}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <View style={styles.filterTabs}>
         {['all', 'cycling', 'climbing', 'running'].map((type) => (
@@ -370,7 +494,36 @@ export default function Explore() {
         ))}
       </View>
 
-      {filteredActivities.length === 0 ? (
+      {/* Date Filter */}
+      <View style={styles.dateFilterContainer}>
+        <Text style={styles.filterLabel}>When:</Text>
+        <View style={styles.dateFilterTabs}>
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'today', label: 'Today' },
+            { key: 'week', label: 'This Week' },
+            { key: 'month', label: 'This Month' }
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
+              style={[
+                styles.dateFilterTab,
+                dateFilter === filter.key && styles.dateFilterTabActive
+              ]}
+              onPress={() => setDateFilter(filter.key as any)}
+            >
+              <Text style={[
+                styles.dateFilterTabText,
+                dateFilter === filter.key && styles.dateFilterTabTextActive
+              ]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {sortedActivities.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🏔️</Text>
           <Text style={styles.emptyTitle}>No activities yet</Text>
@@ -380,7 +533,7 @@ export default function Explore() {
         </View>
       ) : (
         <FlatList
-          data={filteredActivities}
+          data={sortedActivities}
           renderItem={renderActivity}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
@@ -466,11 +619,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#4A7C59',
   },
-  searchContainer: {
+  searchRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     marginHorizontal: 20,
     marginBottom: 16,
+    gap: 8,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#F5F5F5',
@@ -484,6 +642,50 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#000',
+  },
+  locationButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#4A7C59',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  locationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  locationPicker: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  locationOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  locationOptionActive: {
+    backgroundColor: '#E8F5E9',
+  },
+  locationOptionText: {
+    fontSize: 15,
+    color: '#666',
+  },
+  locationOptionTextActive: {
+    color: '#4A7C59',
+    fontWeight: '600',
   },
   filterTabs: {
     flexDirection: 'row',
@@ -508,6 +710,40 @@ const styles = StyleSheet.create({
   filterTabTextActive: {
     color: 'white',
   },
+  dateFilterContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  dateFilterTabs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateFilterTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  dateFilterTabActive: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#4A7C59',
+  },
+  dateFilterTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  dateFilterTabTextActive: {
+    color: '#4A7C59',
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 20,
@@ -524,6 +760,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    position: 'relative',
+  },
+  activityTypeLabel: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#4A7C59',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    zIndex: 1,
+  },
+  activityTypeLabelMultiDay: {
+    backgroundColor: '#FF9800',
+  },
+  activityTypeLabelText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   activityHeader: {
     flexDirection: 'row',

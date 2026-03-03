@@ -28,7 +28,7 @@ export default function TermsOfService() {
 
         <Text style={styles.sectionTitle}>2. Eligibility</Text>
         <Text style={styles.paragraph}>
-          You must be at least 13 years old to use Wildpals. By using the app, you represent that you meet this age requirement and have the legal capacity to enter into these terms.
+          You must be at least 18 years old to use Wildpals. By using the app, you represent that you meet this age requirement and have the legal capacity to enter into these terms.
         </Text>
 
         <Text style={styles.sectionTitle}>3. Account Responsibilities</Text>
@@ -113,8 +113,12 @@ export default function TermsOfService() {
         <Text style={styles.paragraph}>
           If you have questions about these Terms of Service, please contact us at:
         </Text>
-        <Text style={styles.contactInfo}>Email: legal@wildpals.com</Text>
-        <Text style={styles.contactInfo}>Support: support@wildpals.com</Text>
+        <TouchableOpacity onPress={() => {
+          const { Linking } = require('react-native');
+          Linking.openURL('mailto:yangyang.ruohan.liu@gmail.com?subject=Terms of Service Question&body=Hi Wildpals Team,%0D%0A%0D%0AI have a question about the Terms of Service:%0D%0A%0D%0A');
+        }}>
+          <Text style={styles.contactInfo}>Email: yangyang.ruohan.liu@gmail.com</Text>
+        </TouchableOpacity>
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>

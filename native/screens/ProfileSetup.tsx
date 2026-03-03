@@ -18,7 +18,6 @@ export default function ProfileSetup() {
   const navigation = useNavigation();
   const { user } = useAuth();
   
-  const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [city, setCity] = useState('');
   const [bio, setBio] = useState('');
@@ -26,26 +25,44 @@ export default function ProfileSetup() {
 
   const genderOptions = ['Male', 'Female', 'Non-binary', 'Prefer not to say'];
 
-  const handleComplete = async () => {
-    if (!age || !gender || !city) {
-      Alert.alert('Required Fields', 'Please fill in age, gender, and city');
-      return;
+  const calculateAge = (birthDate: string): number => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
     }
+    
+    return age;
+  };
 
-    if (parseInt(age) < 13 || parseInt(age) > 120) {
-      Alert.alert('Invalid Age', 'Please enter a valid age');
+  const handleComplete = async () => {
+    if (!gender || !city) {
+      Alert.alert('Required Fields', 'Please fill in gender and city');
       return;
     }
 
     setLoading(true);
     try {
+      // Get user's date of birth from auth metadata
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const dateOfBirth = authUser?.user_metadata?.date_of_birth;
+      
+      let age = null;
+      if (dateOfBirth) {
+        age = calculateAge(dateOfBirth);
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
-          age: parseInt(age),
+          age: age,
           gender: gender,
           location: city,
           bio: bio || null,
+          date_of_birth: dateOfBirth || null,
         })
         .eq('id', user?.id);
 
@@ -90,20 +107,6 @@ export default function ProfileSetup() {
           <Text style={styles.subtitle}>
             Help others get to know you better
           </Text>
-
-          {/* Age */}
-          <View style={styles.fieldContainer}>
-            <Text style={styles.label}>Age *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your age"
-              placeholderTextColor="#999"
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-              maxLength={3}
-            />
-          </View>
 
           {/* Gender */}
           <View style={styles.fieldContainer}>

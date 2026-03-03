@@ -17,7 +17,13 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wildpals.app"
+      "bundleIdentifier": "com.wildpals.app",
+      "buildNumber": "7",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleIconName": "AppIcon"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +36,20 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-asset"
-    ]
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8b5b2bcc-fb77-46ce-8732-dca04d00c2de"
+      }
+    }
   }
 }

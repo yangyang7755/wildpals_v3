@@ -21,14 +21,58 @@ export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const calculateAge = (birthDate: string): number => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    
+    return age;
+  };
+
   const validateForm = () => {
     if (!fullName.trim()) {
       Alert.alert('Error', 'Please enter your full name');
+      return false;
+    }
+
+    if (!dateOfBirth.trim()) {
+      Alert.alert('Error', 'Please enter your date of birth');
+      return false;
+    }
+
+    // Validate date format (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateOfBirth)) {
+      Alert.alert('Error', 'Please enter date in format: YYYY-MM-DD (e.g., 2000-01-15)');
+      return false;
+    }
+
+    // Validate date is valid
+    const birthDate = new Date(dateOfBirth);
+    if (isNaN(birthDate.getTime())) {
+      Alert.alert('Error', 'Please enter a valid date');
+      return false;
+    }
+
+    // Check if user is at least 18 years old
+    const age = calculateAge(dateOfBirth);
+    if (age < 18) {
+      Alert.alert(
+        'Age Requirement',
+        'You must be at least 18 years old to use Wildpals.',
+        [{ text: 'OK' }]
+      );
       return false;
     }
 
@@ -66,11 +110,11 @@ export default function SignUp() {
 
     setLoading(true);
     try {
-      const success = await signup(email, password, fullName);
+      const success = await signup(email, password, fullName, dateOfBirth);
       
       if (success) {
         // Navigate to email verification screen
-        navigation.navigate('EmailVerification' as never, { email } as never);
+        (navigation as any).navigate('EmailVerification', { email });
       }
     } catch (error: any) {
       // Display the specific error message from AuthContext
@@ -88,7 +132,7 @@ export default function SignUp() {
             },
             {
               text: 'Go to Login',
-              onPress: () => navigation.navigate('Login' as never),
+              onPress: () => (navigation as any).navigate('Login'),
             },
           ]
         );
@@ -133,6 +177,19 @@ export default function SignUp() {
               onChangeText={setFullName}
               autoCapitalize="words"
             />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Date of Birth (YYYY-MM-DD)"
+              placeholderTextColor="#999"
+              value={dateOfBirth}
+              onChangeText={setDateOfBirth}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+            />
+            <Text style={styles.ageRequirement}>
+              You must be 18 or older to use Wildpals
+            </Text>
 
             <TextInput
               style={styles.input}
@@ -182,18 +239,32 @@ export default function SignUp() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={styles.checkboxContainer}
-              onPress={() => setAgreeToTerms(!agreeToTerms)}
-            >
-              <View style={[styles.checkbox, agreeToTerms && styles.checkboxChecked]}>
-                {agreeToTerms && <Text style={styles.checkmark}>✓</Text>}
-              </View>
+            <View style={styles.checkboxContainer}>
+              <TouchableOpacity
+                onPress={() => setAgreeToTerms(!agreeToTerms)}
+                style={styles.checkbox}
+              >
+                <View style={[styles.checkboxBox, agreeToTerms && styles.checkboxChecked]}>
+                  {agreeToTerms && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
               <Text style={styles.checkboxLabel}>
                 I agree to the{' '}
-                <Text style={styles.link}>Terms and Conditions</Text>
+                <Text 
+                  style={styles.link}
+                  onPress={() => (navigation as any).navigate('TermsOfService')}
+                >
+                  Terms and Conditions
+                </Text>
+                {' '}and{' '}
+                <Text 
+                  style={styles.link}
+                  onPress={() => (navigation as any).navigate('PrivacyPolicy')}
+                >
+                  Privacy Policy
+                </Text>
               </Text>
-            </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={[styles.signUpButton, loading && styles.signUpButtonDisabled]}
@@ -207,7 +278,7 @@ export default function SignUp() {
 
             <View style={styles.loginContainer}>
               <Text style={styles.loginText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Login' as never)}>
+              <TouchableOpacity onPress={() => (navigation as any).navigate('Login')}>
                 <Text style={styles.loginLink}>Log in</Text>
               </TouchableOpacity>
             </View>
@@ -281,6 +352,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
   },
+  ageRequirement: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: -8,
+    marginBottom: 8,
+  },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,16 +381,19 @@ const styles = StyleSheet.create({
   },
   checkboxContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginTop: 8,
   },
   checkbox: {
+    marginRight: 12,
+    paddingTop: 2,
+  },
+  checkboxBox: {
     width: 24,
     height: 24,
     borderWidth: 2,
     borderColor: '#E0E0E0',
     borderRadius: 6,
-    marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -334,6 +414,7 @@ const styles = StyleSheet.create({
   link: {
     color: '#4A7C59',
     fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   signUpButton: {
     backgroundColor: '#4A7C59',

@@ -13,7 +13,6 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import ClubChat from './ClubChat';
 
 interface Club {
   id: string;
@@ -50,6 +49,16 @@ interface Activity {
   };
 }
 
+interface ChatMessage {
+  id: string;
+  sender_id: string;
+  message: string;
+  created_at: string;
+  profiles: {
+    full_name: string;
+  };
+}
+
 export default function ClubDetail() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -59,6 +68,7 @@ export default function ClubDetail() {
   const [club, setClub] = useState<Club | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [recentMessages, setRecentMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<'events' | 'members' | 'chat'>('events');
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -68,7 +78,32 @@ export default function ClubDetail() {
 
   useEffect(() => {
     loadClubData();
+    loadRecentMessages();
   }, [clubId]);
+
+  const loadRecentMessages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('club_chat_messages')
+        .select(`
+          id,
+          sender_id,
+          message,
+          created_at,
+          profiles (
+            full_name
+          )
+        `)
+        .eq('club_id', clubId)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      if (error) throw error;
+      setRecentMessages(data || []);
+    } catch (error) {
+      console.error('Error loading recent messages:', error);
+    }
+  };
 
   const loadClubData = async () => {
     try {
@@ -276,7 +311,9 @@ export default function ClubDetail() {
           {/* Join/Status Button */}
           {membershipStatus === 'active' ? (
             <View style={styles.memberBadge}>
-              <Text style={styles.memberBadgeText}>✓ Member</Text>
+              <Text style={styles.memberBadgeText}>
+                {userRole === 'admin' ? '✓ Admin' : '✓ Member'}
+              </Text>
             </View>
           ) : membershipStatus === 'pending' ? (
             <View style={[styles.memberBadge, styles.pendingBadge]}>
@@ -347,6 +384,18 @@ export default function ClubDetail() {
                   onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: activity.id })}
                   activeOpacity={0.7}
                 >
+                  {/* Activity Type Labels */}
+                  {(activity as any).activity_type === 'recurrent' && (
+                    <View style={styles.activityTypeLabel}>
+                      <Text style={styles.activityTypeLabelText}>🔄</Text>
+                    </View>
+                  )}
+                  {(activity as any).activity_type === 'multi_day' && (
+                    <View style={[styles.activityTypeLabel, styles.activityTypeLabelMultiDay]}>
+                      <Text style={styles.activityTypeLabelText}>📅</Text>
+                    </View>
+                  )}
+                  
                   <View style={styles.activityInfo}>
                     <View style={styles.activityHeader}>
                       <Text style={styles.activityTitle}>{activity.title}</Text>
@@ -400,9 +449,56 @@ export default function ClubDetail() {
           )}
         </ScrollView>
       ) : (
-        <View style={styles.chatContainer}>
-          <ClubChat clubId={clubId} />
-        </View>
+        <ScrollView style={styles.tabContent}>
+          <TouchableOpacity
+            style={styles.chatPreviewCard}
+            onPress={() => (navigation as any).navigate('ClubChat', { clubId, clubName: club?.name })}
+            activeOpacity={0.7}
+          >
+            <View style={styles.chatPreviewHeader}>
+              <Text style={styles.chatPreviewTitle}>Club Chat</Text>
+              <View style={styles.chatPreviewBadge}>
+                <Text style={styles.chatPreviewBadgeIcon}>👥</Text>
+                <Text style={styles.chatPreviewBadgeText}>{members.length}</Text>
+              </View>
+            </View>
+            
+            {recentMessages.length === 0 ? (
+              <View style={styles.chatPreviewEmpty}>
+                <Text style={styles.chatPreviewEmptyText}>No messages yet. Start the conversation!</Text>
+              </View>
+            ) : (
+              <View style={styles.chatPreviewMessages}>
+                {recentMessages.map((msg) => {
+                  const isCurrentUser = msg.sender_id === user?.id;
+                  const senderName = isCurrentUser ? 'You' : (msg.profiles?.full_name || 'Unknown');
+                  const time = new Date(msg.created_at).toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit',
+                    hour12: true 
+                  });
+                  
+                  return (
+                    <View key={msg.id} style={styles.chatPreviewMessage}>
+                      <View style={styles.chatPreviewMessageHeader}>
+                        <Text style={styles.chatPreviewMessageSender}>{senderName}</Text>
+                        <Text style={styles.chatPreviewMessageTime}>{time}</Text>
+                      </View>
+                      <Text style={styles.chatPreviewMessageText} numberOfLines={2}>
+                        {msg.message}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            
+            <View style={styles.chatPreviewFooter}>
+              <Text style={styles.chatPreviewFooterText}>Tap to view full chat</Text>
+              <Text style={styles.chatPreviewFooterArrow}>→</Text>
+            </View>
+          </TouchableOpacity>
+        </ScrollView>
       )}
 
       {/* Join Modal */}
@@ -625,6 +721,23 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 2,
     borderColor: 'transparent',
+    position: 'relative',
+  },
+  activityTypeLabel: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#4A7C59',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
+    zIndex: 1,
+  },
+  activityTypeLabelMultiDay: {
+    backgroundColor: '#FF9800',
+  },
+  activityTypeLabelText: {
+    fontSize: 16,
   },
   activityCardAdmin: {
     backgroundColor: '#F0F9F4',
@@ -709,6 +822,100 @@ const styles = StyleSheet.create({
     color: '#4A7C59',
     fontWeight: '600',
     marginTop: 2,
+  },
+  chatPreviewCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
+  },
+  chatPreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  chatPreviewTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+  },
+  chatPreviewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4A7C59',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  chatPreviewBadgeIcon: {
+    fontSize: 12,
+  },
+  chatPreviewBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+  chatPreviewEmpty: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  chatPreviewEmptyText: {
+    fontSize: 15,
+    color: '#999',
+    textAlign: 'center',
+  },
+  chatPreviewMessages: {
+    padding: 16,
+    gap: 12,
+  },
+  chatPreviewMessage: {
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  chatPreviewMessageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  chatPreviewMessageSender: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A7C59',
+  },
+  chatPreviewMessageTime: {
+    fontSize: 12,
+    color: '#999',
+  },
+  chatPreviewMessageText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  chatPreviewFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F9F9F9',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  chatPreviewFooterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A7C59',
+  },
+  chatPreviewFooterArrow: {
+    fontSize: 18,
+    color: '#4A7C59',
   },
   chatContainer: {
     flex: 1,

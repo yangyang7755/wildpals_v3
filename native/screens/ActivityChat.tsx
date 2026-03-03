@@ -11,10 +11,14 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ReportModal from '../components/ReportModal';
+import BlockingService from '../services/BlockingService';
+import TextModerationService from '../services/TextModerationService';
 
 interface Message {
   id: string;
@@ -55,6 +59,9 @@ export default function ActivityChat() {
   const [sending, setSending] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     loadActivityAndMessages();
@@ -177,6 +184,13 @@ export default function ActivityChat() {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !user) return;
 
+    // Validate message with text moderation
+    const validation = await TextModerationService.validateMessage(newMessage.trim());
+    if (!validation.valid) {
+      Alert.alert('Message Not Allowed', validation.errorMessage || 'Your message violates community guidelines');
+      return;
+    }
+
     setSending(true);
     try {
       const { error } = await supabase
@@ -207,49 +221,92 @@ export default function ActivityChat() {
     });
   };
 
+  const handleMessageLongPress = (message: Message) => {
+    if (message.sender_id === user?.id) return; // Can't report own messages
+    setSelectedMessage(message);
+    setShowMessageMenu(true);
+  };
+
+  const handleBlockUser = async () => {
+    if (!selectedMessage || !user) return;
+
+    Alert.alert(
+      'Block User',
+      `Blocking ${selectedMessage.profiles?.full_name} will prevent them from sending you messages or viewing your profile. This action is reversible.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await BlockingService.blockUser(user.id, selectedMessage.sender_id);
+              Alert.alert('User Blocked', 'You have blocked this user');
+              setShowMessageMenu(false);
+              await loadMessages(); // Reload to filter blocked messages
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to block user');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReportMessage = () => {
+    setShowMessageMenu(false);
+    setShowReportModal(true);
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.sender_id === user?.id;
     const senderName = item.profiles?.full_name || 'Unknown';
     const senderInitial = senderName.charAt(0).toUpperCase();
 
     return (
-      <View style={[
-        styles.messageContainer,
-        isOwnMessage ? styles.ownMessageContainer : styles.otherMessageContainer
-      ]}>
-        {!isOwnMessage && (
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{senderInitial}</Text>
-          </View>
-        )}
-        
+      <TouchableOpacity
+        onLongPress={() => handleMessageLongPress(item)}
+        disabled={isOwnMessage}
+        activeOpacity={0.7}
+      >
         <View style={[
-          styles.messageBubble,
-          isOwnMessage ? styles.ownMessageBubble : styles.otherMessageBubble
+          styles.messageContainer,
+          isOwnMessage ? styles.ownMessageContainer : styles.otherMessageContainer
         ]}>
           {!isOwnMessage && (
-            <Text style={styles.senderName}>{senderName}</Text>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{senderInitial}</Text>
+            </View>
           )}
-          <Text style={[
-            styles.messageText,
-            isOwnMessage ? styles.ownMessageText : styles.otherMessageText
+          
+          <View style={[
+            styles.messageBubble,
+            isOwnMessage ? styles.ownMessageBubble : styles.otherMessageBubble
           ]}>
-            {item.message}
-          </Text>
-          <Text style={[
-            styles.messageTime,
-            isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime
-          ]}>
-            {formatTime(item.created_at)}
-          </Text>
-        </View>
-
-        {isOwnMessage && (
-          <View style={[styles.avatar, styles.ownAvatar]}>
-            <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase()}</Text>
+            {!isOwnMessage && (
+              <Text style={styles.senderName}>{senderName}</Text>
+            )}
+            <Text style={[
+              styles.messageText,
+              isOwnMessage ? styles.ownMessageText : styles.otherMessageText
+            ]}>
+              {item.message}
+            </Text>
+            <Text style={[
+              styles.messageTime,
+              isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime
+            ]}>
+              {formatTime(item.created_at)}
+            </Text>
           </View>
-        )}
-      </View>
+
+          {isOwnMessage && (
+            <View style={[styles.avatar, styles.ownAvatar]}>
+              <Text style={styles.avatarText}>{user?.fullName?.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -335,7 +392,14 @@ export default function ActivityChat() {
                 const isOrganizer = participant.id === 'organizer';
 
                 return (
-                  <View key={participant.id} style={styles.participantItem}>
+                  <TouchableOpacity
+                    key={participant.id}
+                    style={styles.participantItem}
+                    onPress={() => {
+                      setShowParticipants(false);
+                      navigation.navigate('UserProfile' as never, { userId: participant.user_id } as never);
+                    }}
+                  >
                     <View style={styles.participantAvatar}>
                       <Text style={styles.participantAvatarText}>{initial}</Text>
                     </View>
@@ -347,13 +411,72 @@ export default function ActivityChat() {
                         </View>
                       )}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
           </View>
         </View>
       </Modal>
+
+      {/* Message Action Menu */}
+      <Modal
+        visible={showMessageMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMessageMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMessageMenu(false)}
+        >
+          <View style={styles.menuContent}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleReportMessage}
+            >
+              <Text style={styles.menuItemIcon}>🚨</Text>
+              <Text style={styles.menuItemText}>Report Message</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleBlockUser}
+            >
+              <Text style={styles.menuItemIcon}>🚫</Text>
+              <Text style={styles.menuItemText}>Block User</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              onPress={() => setShowMessageMenu(false)}
+            >
+              <Text style={styles.menuItemTextCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Report Modal */}
+      {selectedMessage && (
+        <ReportModal
+          visible={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setSelectedMessage(null);
+          }}
+          reportType="message_content"
+          targetId={selectedMessage.id}
+          targetUserId={selectedMessage.sender_id}
+          targetName={selectedMessage.profiles?.full_name || 'Unknown'}
+          currentUserId={user?.id || ''}
+          chatType="activity"
+          onReportSubmitted={() => {
+            setSelectedMessage(null);
+          }}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -590,5 +713,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#4A7C59',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  menuContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 300,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  menuItemIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '500',
+  },
+  menuItemCancel: {
+    justifyContent: 'center',
+    borderBottomWidth: 0,
+  },
+  menuItemTextCancel: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, fullName: string) => Promise<boolean>;
+  signup: (email: string, password: string, fullName: string, dateOfBirth?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -86,23 +86,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (
     email: string,
     password: string,
-    fullName: string
+    fullName: string,
+    dateOfBirth?: string
   ): Promise<boolean> => {
     try {
+      console.log('=== SIGNUP ATTEMPT ===');
+      console.log('Email:', email);
+      console.log('Full Name:', fullName);
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName,
+            date_of_birth: dateOfBirth,
           },
-          emailRedirectTo: undefined, // Will use Supabase default
+          // Don't specify emailRedirectTo - let Supabase use its default configuration
         },
       });
 
+      console.log('=== SIGNUP RESPONSE ===');
+      console.log('Error:', error);
+      console.log('Data:', JSON.stringify(data, null, 2));
+      console.log('User ID:', data?.user?.id);
+      console.log('User Email:', data?.user?.email);
+      console.log('Email Confirmed At:', data?.user?.email_confirmed_at);
+      console.log('Confirmation Sent At:', data?.user?.confirmation_sent_at);
+
       if (error) {
-        console.error('Signup error:', error.message);
-        console.error('Full error:', error);
+        console.error('❌ Signup error:', error.message);
+        console.error('Full error object:', JSON.stringify(error, null, 2));
         
         // Provide more specific error messages
         if (error.message.includes('already registered') || error.message.includes('already been registered')) {
@@ -118,20 +132,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Check if user was created despite error
+      // Check if user was created
       if (data?.user) {
-        console.log('User created successfully:', data.user.id);
-        // User is created but email may not be verified yet
+        console.log('✅ User created successfully!');
+        console.log('User ID:', data.user.id);
+        console.log('Email:', data.user.email);
+        console.log('Email confirmed?', !!data.user.email_confirmed_at);
+        console.log('Confirmation sent?', !!data.user.confirmation_sent_at);
+        
+        // Check if email confirmation is required
+        if (!data.user.email_confirmed_at && !data.user.confirmation_sent_at) {
+          console.warn('⚠️ WARNING: User created but no confirmation email was sent!');
+          console.warn('This means email confirmation might be disabled in Supabase.');
+        } else if (data.user.confirmation_sent_at) {
+          console.log('📧 Confirmation email sent at:', data.user.confirmation_sent_at);
+        }
+        
         return true;
       }
 
-      // Note: User is created but email is not verified yet
-      // Profile will be created automatically by database trigger
-      // User needs to verify email before they can fully access the app
-      
+      console.log('✅ Signup completed (no user object returned - might be auto-confirmed)');
       return true;
     } catch (error: any) {
-      console.error('Signup error:', error);
+      console.error('❌ Signup error caught:', error);
       throw error; // Re-throw to be caught by the calling function
     }
   };

@@ -83,7 +83,7 @@ export default function Settings() {
       );
     } catch (error: any) {
       console.error('Error deleting account:', error);
-      Alert.alert('Error', error.message || 'Failed to delete account. Please contact support at support@wildpals.com');
+      Alert.alert('Error', error.message || 'Failed to delete account. Please contact support at yangyang.ruohan.liu@gmail.com');
     } finally {
       setDeleting(false);
     }
@@ -190,14 +190,14 @@ export default function Settings() {
           
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => Linking.openURL('mailto:support@wildpals.com')}
+            onPress={() => Linking.openURL('mailto:yangyang.ruohan.liu@gmail.com?subject=Wildpals Support Request&body=Hi Wildpals Team,%0D%0A%0D%0AI need help with:%0D%0A%0D%0A')}
           >
             <View style={[styles.iconContainer, { backgroundColor: '#FFF3E0' }]}>
               <Text style={styles.menuIcon}>💬</Text>
             </View>
             <View style={styles.menuTextContainer}>
               <Text style={styles.menuText}>Contact Support</Text>
-              <Text style={styles.menuSubtext}>support@wildpals.com</Text>
+              <Text style={styles.menuSubtext}>yangyang.ruohan.liu@gmail.com</Text>
             </View>
             <Text style={styles.menuArrow}>→</Text>
           </TouchableOpacity>

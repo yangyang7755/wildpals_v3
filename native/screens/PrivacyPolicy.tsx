@@ -79,7 +79,7 @@ export default function PrivacyPolicy() {
 
         <Text style={styles.sectionTitle}>7. Children's Privacy</Text>
         <Text style={styles.paragraph}>
-          Wildpals is intended for users aged 13 and older. We do not knowingly collect information from children under 13. If you believe we have collected information from a child under 13, please contact us immediately.
+          Wildpals is intended for users aged 18 and older. We do not knowingly collect information from children under 18. If you believe we have collected information from a child under 18, please contact us immediately.
         </Text>
 
         <Text style={styles.sectionTitle}>8. International Users</Text>
@@ -96,8 +96,12 @@ export default function PrivacyPolicy() {
         <Text style={styles.paragraph}>
           If you have questions about this Privacy Policy or your data, please contact us at:
         </Text>
-        <Text style={styles.contactInfo}>Email: privacy@wildpals.com</Text>
-        <Text style={styles.contactInfo}>Support: support@wildpals.com</Text>
+        <TouchableOpacity onPress={() => {
+          const { Linking } = require('react-native');
+          Linking.openURL('mailto:yangyang.ruohan.liu@gmail.com?subject=Privacy Policy Question&body=Hi Wildpals Team,%0D%0A%0D%0AI have a question about the Privacy Policy:%0D%0A%0D%0A');
+        }}>
+          <Text style={styles.contactInfo}>Email: yangyang.ruohan.liu@gmail.com</Text>
+        </TouchableOpacity>
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>

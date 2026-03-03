@@ -42,11 +42,21 @@ interface JoinRequest {
   };
 }
 
+interface ClubChat {
+  club_id: string;
+  club_name: string;
+  last_message: string;
+  last_message_time: string;
+  sender_name: string;
+  member_count: number;
+}
+
 export default function NotificationsImproved() {
   const { user } = useAuth();
   const navigation = useNavigation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [clubChats, setClubChats] = useState<ClubChat[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -56,33 +66,17 @@ export default function NotificationsImproved() {
     try {
       setLoading(true);
 
-      // Load general notifications
+      // Load general notifications - only unread ones
       const { data: notifData, error: notifError } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
+        .eq('is_read', false)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(10);
 
       if (notifError) throw notifError;
       setNotifications(notifData || []);
-
-      // Delete all notifications after viewing (they've been seen)
-      if (notifData && notifData.length > 0) {
-        const notificationIds = notifData.map(n => n.id);
-        
-        // Delete notifications in background (don't wait for response)
-        supabase
-          .from('notifications')
-          .delete()
-          .in('id', notificationIds)
-          .then(() => {
-            // After deletion, clear from state after a short delay so user can see them
-            setTimeout(() => {
-              setNotifications([]);
-            }, 2000); // Show for 2 seconds then remove
-          });
-      }
 
       // Load join requests (for organizers) - these stay visible
       const { data: requestData, error: requestError } = await supabase
@@ -112,6 +106,63 @@ export default function NotificationsImproved() {
         .filter((item: any) => item.requester && item.activity);
 
       setJoinRequests(transformedRequests);
+
+      // Load club chats with recent messages
+      const { data: clubMemberships } = await supabase
+        .from('club_members')
+        .select('club_id')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
+
+      if (clubMemberships && clubMemberships.length > 0) {
+        const clubIds = clubMemberships.map(m => m.club_id);
+
+        // Get latest message for each club
+        const clubChatsData: ClubChat[] = [];
+        
+        for (const clubId of clubIds) {
+          const { data: clubData } = await supabase
+            .from('clubs')
+            .select('name, member_count')
+            .eq('id', clubId)
+            .single();
+
+          const { data: lastMessage } = await supabase
+            .from('club_chat_messages')
+            .select(`
+              message,
+              created_at,
+              profiles (
+                full_name
+              )
+            `)
+            .eq('club_id', clubId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (clubData) {
+            const profiles: any = lastMessage?.profiles;
+            const senderName = Array.isArray(profiles) ? profiles[0]?.full_name : profiles?.full_name;
+            
+            clubChatsData.push({
+              club_id: clubId,
+              club_name: clubData.name,
+              last_message: lastMessage?.message || 'No messages yet',
+              last_message_time: lastMessage?.created_at || new Date().toISOString(),
+              sender_name: senderName || '',
+              member_count: clubData.member_count || 0,
+            });
+          }
+        }
+
+        // Sort by most recent message
+        clubChatsData.sort((a, b) => 
+          new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
+        );
+
+        setClubChats(clubChatsData);
+      }
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
@@ -127,33 +178,23 @@ export default function NotificationsImproved() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      // Try both column names for compatibility
-      const { error: isReadError } = await supabase
+      const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('id', notificationId);
 
-      if (isReadError) {
-        // Fallback to 'read' column if 'is_read' doesn't exist
-        await supabase
-          .from('notifications')
-          .update({ read: true } as any)
-          .eq('id', notificationId);
-      }
+      if (error) throw error;
 
-      setNotifications(prev =>
-        prev.map(n => (n.id === notificationId ? { ...n, is_read: true, read: true } : n))
-      );
+      // Remove from state immediately
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
   };
 
   const handleNotificationPress = async (notification: Notification) => {
-    const isUnread = notification.is_read === false || notification.read === false;
-    if (isUnread) {
-      await markAsRead(notification.id);
-    }
+    // Mark as read immediately
+    await markAsRead(notification.id);
 
     // Navigate based on notification type
     if (notification.related_type === 'activity' && notification.related_id) {
@@ -323,26 +364,71 @@ export default function NotificationsImproved() {
   );
 
   const renderNotification = (item: Notification) => {
-    const isUnread = item.is_read === false || item.read === false;
     return (
       <TouchableOpacity
         key={item.id}
-        style={[styles.notificationCard, isUnread && styles.unreadCard]}
+        style={styles.notificationBanner}
         onPress={() => handleNotificationPress(item)}
+        activeOpacity={0.7}
       >
-        <View style={styles.notificationContent}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          {item.message && <Text style={styles.notificationMessage}>{item.message}</Text>}
-          <Text style={styles.timestamp}>{formatDate(item.created_at)}</Text>
+        <View style={styles.notificationBannerContent}>
+          <Text style={styles.notificationBannerText}>{item.title}</Text>
+          <TouchableOpacity 
+            onPress={(e) => {
+              e.stopPropagation();
+              markAsRead(item.id);
+            }}
+            style={styles.dismissButton}
+          >
+            <Text style={styles.dismissButtonText}>✕</Text>
+          </TouchableOpacity>
         </View>
-        {isUnread && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderClubChat = (item: ClubChat) => {
+    const clubInitial = item.club_name.charAt(0).toUpperCase();
+    
+    return (
+      <TouchableOpacity
+        key={item.club_id}
+        style={styles.clubChatCard}
+        onPress={() => {
+          (navigation as any).navigate('ClubChat', { 
+            clubId: item.club_id, 
+            clubName: item.club_name 
+          });
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={styles.clubAvatar}>
+          <Text style={styles.clubAvatarText}>{clubInitial}</Text>
+        </View>
+        
+        <View style={styles.clubChatContent}>
+          <View style={styles.clubChatHeader}>
+            <Text style={styles.clubChatName}>{item.club_name}</Text>
+            <Text style={styles.clubChatTime}>{formatDate(item.last_message_time)}</Text>
+          </View>
+          
+          <Text style={styles.clubChatMessage} numberOfLines={2}>
+            {item.sender_name ? `${item.sender_name}: ` : ''}{item.last_message}
+          </Text>
+          
+          <View style={styles.clubChatFooter}>
+            <Text style={styles.clubMemberCount}>👥 {item.member_count} members</Text>
+          </View>
+        </View>
+        
+        <Text style={styles.clubChatArrow}>→</Text>
       </TouchableOpacity>
     );
   };
 
   const pendingRequests = joinRequests.filter(r => r.status === 'pending');
   const processedRequests = joinRequests.filter(r => r.status !== 'pending');
-  const unreadCount = notifications.filter(n => n.is_read === false || n.read === false).length + pendingRequests.length;
+  const unreadCount = notifications.length + pendingRequests.length;
 
   if (loading) {
     return (
@@ -358,7 +444,7 @@ export default function NotificationsImproved() {
   }
 
   const hasAnyContent =
-    pendingRequests.length > 0 || processedRequests.length > 0 || notifications.length > 0;
+    pendingRequests.length > 0 || processedRequests.length > 0 || notifications.length > 0 || clubChats.length > 0;
 
   return (
     <View style={styles.container}>
@@ -372,19 +458,26 @@ export default function NotificationsImproved() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Notifications Banner - Small at top */}
+        {notifications.length > 0 && (
+          <View style={styles.notificationsBannerSection}>
+            {notifications.map(renderNotification)}
+          </View>
+        )}
+
+        {/* Club Chats */}
+        {clubChats.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Club Chats</Text>
+            {clubChats.map(renderClubChat)}
+          </View>
+        )}
+
         {/* Pending Join Requests */}
         {pendingRequests.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Pending Requests</Text>
             {pendingRequests.map(renderJoinRequest)}
-          </View>
-        )}
-
-        {/* General Notifications */}
-        {notifications.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Updates</Text>
-            {notifications.map(renderNotification)}
           </View>
         )}
 
@@ -595,7 +688,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // General Notification Card Styles
+  // Notification Banner Styles (Small, compact at top)
+  notificationsBannerSection: {
+    marginBottom: 16,
+  },
+  notificationBanner: {
+    backgroundColor: '#E8F5E9',
+    borderLeftWidth: 3,
+    borderLeftColor: '#4A7C59',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 6,
+  },
+  notificationBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  notificationBannerText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '500',
+    flex: 1,
+  },
+  dismissButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  dismissButtonText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
+  // General Notification Card Styles (REMOVED - using banner instead)
   notificationCard: {
     backgroundColor: 'white',
     borderWidth: 2,
@@ -631,6 +757,70 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#4A7C59',
     marginLeft: 12,
+  },
+  // Club Chat Card Styles
+  clubChatCard: {
+    backgroundColor: 'white',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clubAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#4A7C59',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  clubAvatarText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  clubChatContent: {
+    flex: 1,
+  },
+  clubChatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  clubChatName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    flex: 1,
+  },
+  clubChatTime: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 8,
+  },
+  clubChatMessage: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  clubChatFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clubMemberCount: {
+    fontSize: 12,
+    color: '#999',
+  },
+  clubChatArrow: {
+    fontSize: 20,
+    color: '#999',
+    marginLeft: 8,
   },
   // Empty State
   emptyState: {

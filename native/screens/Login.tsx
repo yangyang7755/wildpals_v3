@@ -103,12 +103,6 @@ export default function Login() {
             <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
           </TouchableOpacity>
 
-          <Text style={styles.divider}>or</Text>
-
-          <TouchableOpacity style={styles.appleButton}>
-            <Text style={styles.appleButtonText}>Continue with Apple</Text>
-          </TouchableOpacity>
-
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('SignUp' as never)}>
@@ -229,25 +223,6 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     color: '#000',
     fontSize: 16,
-  },
-  divider: {
-    textAlign: 'center',
-    color: '#999',
-    fontSize: 16,
-    paddingVertical: 8,
-  },
-  appleButton: {
-    backgroundColor: 'white',
-    borderWidth: 2,
-    borderColor: '#4A7C59',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  appleButtonText: {
-    color: '#4A7C59',
-    fontSize: 16,
-    fontWeight: '600',
   },
   signupContainer: {
     flexDirection: 'row',

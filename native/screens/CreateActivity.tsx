@@ -16,15 +16,21 @@ import { useAuth } from '../contexts/AuthContext';
 
 type ActivityType = 'cycling' | 'climbing' | 'running';
 type RoadSurface = 'road' | 'gravel' | 'mtb' | 'track' | 'social';
-type ClimbingType = 'indoor' | 'bouldering' | 'sport climbing' | 'trad climbing';
+type ClimbingType = 'indoor_bouldering' | 'indoor_top_rope' | 'indoor_lead_climbing' | 'outdoor_climbing';
+type RunningTerrain = 'road' | 'trail' | 'track' | 'mixed';
+type ActivityScheduleType = 'one_off' | 'recurrent' | 'multi_day';
 
 export default function CreateActivity() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const [selectedType, setSelectedType] = useState<ActivityType | null>(null);
+  const [activityScheduleType, setActivityScheduleType] = useState<ActivityScheduleType>('one_off');
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [recurrenceDayOfWeek, setRecurrenceDayOfWeek] = useState<number>(1); // Default Monday
   const [location, setLocation] = useState('');
   const [meetupLocation, setMeetupLocation] = useState('');
   const [maxParticipants, setMaxParticipants] = useState('');
@@ -40,8 +46,14 @@ export default function CreateActivity() {
   
   // Climbing specific
   const [climbingLevel, setClimbingLevel] = useState('');
-  const [climbingType, setClimbingType] = useState<ClimbingType>('indoor');
+  const [climbingType, setClimbingType] = useState<ClimbingType>('indoor_bouldering');
   const [gearRequired, setGearRequired] = useState('');
+  
+  // Running specific
+  const [runningTerrain, setRunningTerrain] = useState<RunningTerrain>('road');
+  const [runningPace, setRunningPace] = useState('');
+  const [runningDistance, setRunningDistance] = useState('');
+  const [runningElevation, setRunningElevation] = useState('');
   
   // Club visibility
   const [clubMembersOnly, setClubMembersOnly] = useState(false);
@@ -99,8 +111,25 @@ export default function CreateActivity() {
   };
 
   const handleCreate = async () => {
-    if (!selectedType || !title || !date || !time || !location || !maxParticipants) {
+    // Validation
+    if (!selectedType || !title || !time || !location || !maxParticipants) {
       Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate based on activity schedule type
+    if (activityScheduleType === 'one_off' && !date) {
+      Alert.alert('Error', 'Please provide a date for one-off activity');
+      return;
+    }
+
+    if (activityScheduleType === 'multi_day' && (!date || !endDate || !endTime)) {
+      Alert.alert('Error', 'Please provide start date, end date, and end time for multi-day activity');
+      return;
+    }
+
+    if (activityScheduleType === 'recurrent' && recurrenceDayOfWeek === undefined) {
+      Alert.alert('Error', 'Please select a day of week for recurrent activity');
       return;
     }
 
@@ -121,13 +150,29 @@ export default function CreateActivity() {
         organizer_id: user.id,
         type: selectedType,
         title,
-        date,
         time,
         location,
         meetup_location: meetupLocation || location,
         max_participants: parseInt(maxParticipants),
         special_comments: specialComments,
+        activity_type: activityScheduleType,
       };
+
+      // Add schedule-specific fields
+      if (activityScheduleType === 'one_off') {
+        activityData.date = date;
+        activityData.is_recurrent_template = false;
+      } else if (activityScheduleType === 'recurrent') {
+        // For recurrent, use the date as the first occurrence
+        activityData.date = date || new Date().toISOString().split('T')[0];
+        activityData.recurrence_day_of_week = recurrenceDayOfWeek;
+        activityData.is_recurrent_template = true; // Mark as template
+      } else if (activityScheduleType === 'multi_day') {
+        activityData.date = date;
+        activityData.end_date = endDate;
+        activityData.end_time = endTime;
+        activityData.is_recurrent_template = false;
+      }
 
       // Add type-specific fields
       if (selectedType === 'cycling') {
@@ -144,6 +189,14 @@ export default function CreateActivity() {
         if (climbingLevel) activityData.climbing_level = climbingLevel;
         activityData.climbing_type = climbingType;
         if (gearRequired) activityData.gear_required = gearRequired;
+      } else if (selectedType === 'running') {
+        if (runningDistance) activityData.distance = parseFloat(runningDistance);
+        if (runningElevation) activityData.elevation = parseFloat(runningElevation);
+        if (runningPace) activityData.pace = parseFloat(runningPace);
+        activityData.distance_unit = 'km';
+        activityData.elevation_unit = 'm';
+        activityData.pace_unit = 'min/km';
+        activityData.running_terrain = runningTerrain;
       }
 
       // Add club visibility setting
@@ -181,8 +234,12 @@ export default function CreateActivity() {
               setRouteLink('');
               setCafeStop('');
               setClimbingLevel('');
-              setClimbingType('indoor');
+              setClimbingType('indoor_bouldering');
               setGearRequired('');
+              setRunningTerrain('road');
+              setRunningPace('');
+              setRunningDistance('');
+              setRunningElevation('');
               setClubMembersOnly(false);
               setSelectedClubs([]);
               
@@ -249,22 +306,125 @@ export default function CreateActivity() {
           onChangeText={setTitle}
         />
 
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.halfInput]}
-            placeholder="Date (YYYY-MM-DD) *"
-            placeholderTextColor="#999"
-            value={date}
-            onChangeText={setDate}
-          />
-          <TextInput
-            style={[styles.input, styles.halfInput]}
-            placeholder="Time (HH:MM) *"
-            placeholderTextColor="#999"
-            value={time}
-            onChangeText={setTime}
-          />
+        {/* Activity Schedule Type */}
+        <Text style={styles.sectionTitle}>Activity Schedule</Text>
+        <View style={styles.chipContainer}>
+          <TouchableOpacity
+            style={[styles.chip, activityScheduleType === 'one_off' && styles.chipActive]}
+            onPress={() => setActivityScheduleType('one_off')}
+          >
+            <Text style={[styles.chipText, activityScheduleType === 'one_off' && styles.chipTextActive]}>
+              One-Off
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, activityScheduleType === 'recurrent' && styles.chipActive]}
+            onPress={() => setActivityScheduleType('recurrent')}
+          >
+            <Text style={[styles.chipText, activityScheduleType === 'recurrent' && styles.chipTextActive]}>
+              🔄 Recurrent
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, activityScheduleType === 'multi_day' && styles.chipActive]}
+            onPress={() => setActivityScheduleType('multi_day')}
+          >
+            <Text style={[styles.chipText, activityScheduleType === 'multi_day' && styles.chipTextActive]}>
+              📅 Multi-Day
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        {/* Date/Time fields based on schedule type */}
+        {activityScheduleType === 'one_off' && (
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.halfInput]}
+              placeholder="Date (YYYY-MM-DD) *"
+              placeholderTextColor="#999"
+              value={date}
+              onChangeText={setDate}
+            />
+            <TextInput
+              style={[styles.input, styles.halfInput]}
+              placeholder="Time (HH:MM) *"
+              placeholderTextColor="#999"
+              value={time}
+              onChangeText={setTime}
+            />
+          </View>
+        )}
+
+        {activityScheduleType === 'recurrent' && (
+          <>
+            <Text style={styles.label}>Day of Week *</Text>
+            <View style={styles.chipContainer}>
+              {[
+                { day: 1, label: 'Mon' },
+                { day: 2, label: 'Tue' },
+                { day: 3, label: 'Wed' },
+                { day: 4, label: 'Thu' },
+                { day: 5, label: 'Fri' },
+                { day: 6, label: 'Sat' },
+                { day: 0, label: 'Sun' },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.day}
+                  style={[styles.chip, recurrenceDayOfWeek === item.day && styles.chipActive]}
+                  onPress={() => setRecurrenceDayOfWeek(item.day)}
+                >
+                  <Text style={[styles.chipText, recurrenceDayOfWeek === item.day && styles.chipTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Time (HH:MM) *"
+              placeholderTextColor="#999"
+              value={time}
+              onChangeText={setTime}
+            />
+          </>
+        )}
+
+        {activityScheduleType === 'multi_day' && (
+          <>
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="Start Date *"
+                placeholderTextColor="#999"
+                value={date}
+                onChangeText={setDate}
+              />
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="Start Time *"
+                placeholderTextColor="#999"
+                value={time}
+                onChangeText={setTime}
+              />
+            </View>
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="End Date *"
+                placeholderTextColor="#999"
+                value={endDate}
+                onChangeText={setEndDate}
+              />
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="End Time *"
+                placeholderTextColor="#999"
+                value={endTime}
+                onChangeText={setEndTime}
+              />
+            </View>
+          </>
+        )}
 
         <TextInput
           style={styles.input}
@@ -365,14 +525,14 @@ export default function CreateActivity() {
             {/* Climbing Type */}
             <Text style={styles.label}>Climbing Type *</Text>
             <View style={styles.chipContainer}>
-              {(['indoor', 'bouldering', 'sport climbing', 'trad climbing'] as ClimbingType[]).map((type) => (
+              {(['indoor_bouldering', 'indoor_top_rope', 'indoor_lead_climbing', 'outdoor_climbing'] as ClimbingType[]).map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[styles.chip, climbingType === type && styles.chipActive]}
                   onPress={() => setClimbingType(type)}
                 >
                   <Text style={[styles.chipText, climbingType === type && styles.chipTextActive]}>
-                    {type.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    {type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -399,13 +559,57 @@ export default function CreateActivity() {
         {selectedType === 'running' && (
           <>
             <Text style={styles.sectionTitle}>Running Details</Text>
+            
+            {/* Running Terrain */}
+            <Text style={styles.label}>Terrain *</Text>
+            <View style={styles.chipContainer}>
+              {(['road', 'trail', 'track', 'mixed'] as RunningTerrain[]).map((terrain) => (
+                <TouchableOpacity
+                  key={terrain}
+                  style={[styles.chip, runningTerrain === terrain && styles.chipActive]}
+                  onPress={() => setRunningTerrain(terrain)}
+                >
+                  <Text style={[styles.chipText, runningTerrain === terrain && styles.chipTextActive]}>
+                    {terrain.charAt(0).toUpperCase() + terrain.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="Distance (km)"
+                placeholderTextColor="#999"
+                value={runningDistance}
+                onChangeText={setRunningDistance}
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, styles.halfInput]}
+                placeholder="Elevation (m)"
+                placeholderTextColor="#999"
+                value={runningElevation}
+                onChangeText={setRunningElevation}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            
             <TextInput
               style={styles.input}
-              placeholder="Distance (km)"
+              placeholder="Pace (min/km, e.g., 5:30)"
               placeholderTextColor="#999"
-              value={distance}
-              onChangeText={setDistance}
-              keyboardType="decimal-pad"
+              value={runningPace}
+              onChangeText={setRunningPace}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Route link (e.g., Strava, Komoot)"
+              placeholderTextColor="#999"
+              value={routeLink}
+              onChangeText={setRouteLink}
+              autoCapitalize="none"
             />
           </>
         )}

@@ -14,6 +14,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ReportModal from '../components/ReportModal';
 
 interface Activity {
   id: string;
@@ -36,6 +37,10 @@ interface Activity {
   climbing_level?: string;
   climbing_type?: string;
   gear_required?: string;
+  activity_type?: 'one_off' | 'recurrent' | 'multi_day';
+  recurrence_day_of_week?: number;
+  end_date?: string;
+  end_time?: string;
   profiles?: {
     full_name: string;
     email: string;
@@ -61,6 +66,8 @@ export default function ActivityDetail() {
   const [userStatus, setUserStatus] = useState<string | null>(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinMessage, setJoinMessage] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
 
   useEffect(() => {
     loadActivityDetails();
@@ -107,7 +114,11 @@ export default function ActivityDetail() {
           .eq('requester_id', user.id)
           .single();
 
+        // Only set status if data exists, otherwise explicitly set to null
         setUserStatus(joinData?.status || null);
+        console.log('User status for activity:', joinData?.status || 'none');
+      } else {
+        setUserStatus(null);
       }
     } catch (error) {
       console.error('Error loading activity:', error);
@@ -166,6 +177,11 @@ export default function ActivityDetail() {
     });
   };
 
+  const getDayOfWeekName = (dayNum: number) => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[dayNum] || '';
+  };
+
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'cycling': return '🚴';
@@ -178,7 +194,18 @@ export default function ActivityDetail() {
   const isOrganizer = user?.id === activity?.organizer_id;
   const isFull = (activity?.current_participants || 0) >= (activity?.max_participants || 0);
   const canJoin = !isOrganizer && !userStatus && !isFull;
-  const canViewChat = userStatus === 'accepted' || isOrganizer;
+  // Only show chat if user is organizer OR has been explicitly accepted
+  const canViewChat = isOrganizer || userStatus === 'accepted';
+
+  // Debug logging
+  console.log('Activity Detail Debug:', {
+    userId: user?.id,
+    organizerId: activity?.organizer_id,
+    isOrganizer,
+    userStatus,
+    canViewChat,
+    canJoin
+  });
 
   if (loading) {
     return (
@@ -203,9 +230,13 @@ export default function ActivityDetail() {
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Activity Details</Text>
-        {isOrganizer && (
+        {isOrganizer ? (
           <TouchableOpacity onPress={() => navigation.navigate('ActivityManagement' as never, { activityId } as never)}>
             <Text style={styles.editButton}>⚙️</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => setShowOptionsMenu(true)}>
+            <Text style={styles.editButton}>⋯</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -218,26 +249,60 @@ export default function ActivityDetail() {
           <Text style={styles.activityType}>
             {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
           </Text>
+          
+          {/* Activity Schedule Type Badge */}
+          {activity.activity_type === 'recurrent' && (
+            <View style={styles.activityScheduleBadge}>
+              <Text style={styles.activityScheduleBadgeText}>🔄 RECURRENT</Text>
+            </View>
+          )}
+          {activity.activity_type === 'multi_day' && (
+            <View style={[styles.activityScheduleBadge, styles.activityScheduleBadgeMultiDay]}>
+              <Text style={styles.activityScheduleBadgeText}>📅 MULTI-DAY</Text>
+            </View>
+          )}
         </View>
 
         {/* Organizer */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Organized by</Text>
-          <View style={styles.organizerCard}>
+          <TouchableOpacity
+            style={styles.organizerCard}
+            onPress={() => navigation.navigate('UserProfile' as never, { userId: activity.organizer_id } as never)}
+          >
             <View style={styles.organizerAvatar}>
               <Text style={styles.organizerInitial}>
                 {activity.profiles?.full_name?.charAt(0).toUpperCase() || '?'}
               </Text>
             </View>
             <Text style={styles.organizerName}>{activity.profiles?.full_name || 'Unknown'}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Date & Time */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>When</Text>
-          <Text style={styles.infoText}>📅 {formatDate(activity.date)}</Text>
-          <Text style={styles.infoText}>🕐 {activity.time}</Text>
+          
+          {activity.activity_type === 'multi_day' ? (
+            <>
+              <Text style={styles.infoText}>📅 {formatDate(activity.date)}</Text>
+              <Text style={styles.infoText}>🕐 {activity.time}</Text>
+              <Text style={styles.infoText}>
+                📅 to {activity.end_date ? formatDate(activity.end_date) : 'TBD'}
+              </Text>
+              <Text style={styles.infoText}>🕐 {activity.end_time || 'TBD'}</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.infoText}>📅 {formatDate(activity.date)}</Text>
+              <Text style={styles.infoText}>🕐 {activity.time}</Text>
+              {activity.activity_type === 'recurrent' && !activity.is_recurrent_template && (
+                <Text style={styles.infoTextSecondary}>
+                  🔄 Part of recurring series
+                </Text>
+              )}
+            </>
+          )}
         </View>
 
         {/* Location */}
@@ -309,7 +374,7 @@ export default function ActivityDetail() {
             <Text style={styles.sectionTitle}>Climbing Details</Text>
             {activity.climbing_type && (
               <Text style={styles.infoText}>
-                🧗 Type: {activity.climbing_type.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                🧗 Type: {activity.climbing_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
               </Text>
             )}
             {activity.climbing_level && (
@@ -334,6 +399,7 @@ export default function ActivityDetail() {
 
       {/* Action Buttons */}
       <View style={styles.actionBar}>
+        {/* Show Chat button only if user is organizer OR accepted */}
         {canViewChat && (
           <TouchableOpacity
             style={styles.chatButton}
@@ -343,7 +409,8 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {canJoin && (
+        {/* Show Request to Join button if user hasn't joined and activity not full */}
+        {!isOrganizer && !userStatus && !isFull && (
           <TouchableOpacity
             style={styles.joinButton}
             onPress={handleJoinRequest}
@@ -352,13 +419,15 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {userStatus === 'pending' && (
+        {/* Show pending status */}
+        {!isOrganizer && userStatus === 'pending' && (
           <View style={styles.statusBadge}>
             <Text style={styles.statusText}>⏳ Request Pending</Text>
           </View>
         )}
 
-        {isFull && !userStatus && !isOrganizer && (
+        {/* Show full status */}
+        {!isOrganizer && isFull && !userStatus && (
           <View style={[styles.statusBadge, styles.fullBadge]}>
             <Text style={styles.statusText}>Activity Full</Text>
           </View>
@@ -407,6 +476,53 @@ export default function ActivityDetail() {
           </View>
         </View>
       </Modal>
+
+      {/* Options Menu */}
+      <Modal
+        visible={showOptionsMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowOptionsMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowOptionsMenu(false)}
+        >
+          <View style={styles.menuContent}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowOptionsMenu(false);
+                setShowReportModal(true);
+              }}
+            >
+              <Text style={styles.menuItemIcon}>🚨</Text>
+              <Text style={styles.menuItemText}>Report Activity</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              onPress={() => setShowOptionsMenu(false)}
+            >
+              <Text style={styles.menuItemTextCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Report Modal */}
+      {activity && (
+        <ReportModal
+          visible={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          reportType="activity_content"
+          targetId={activity.id}
+          targetUserId={activity.organizer_id}
+          targetName={activity.title}
+          currentUserId={user?.id || ''}
+        />
+      )}
     </View>
   );
 }
@@ -473,6 +589,22 @@ const styles = StyleSheet.create({
     color: '#4A7C59',
     fontWeight: '600',
     textTransform: 'uppercase',
+  },
+  activityScheduleBadge: {
+    backgroundColor: '#4A7C59',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  activityScheduleBadgeMultiDay: {
+    backgroundColor: '#FF9800',
+  },
+  activityScheduleBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   section: {
     padding: 20,
@@ -670,5 +802,45 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  menuContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 300,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  menuItemIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '500',
+  },
+  menuItemCancel: {
+    justifyContent: 'center',
+    borderBottomWidth: 0,
+  },
+  menuItemTextCancel: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

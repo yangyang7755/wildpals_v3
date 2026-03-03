@@ -17,6 +17,7 @@ import Notifications from './native/screens/Notifications';
 import CreateActivity from './native/screens/CreateActivity';
 import Clubs from './native/screens/Clubs';
 import ClubDetail from './native/screens/ClubDetail';
+import ClubChat from './native/screens/ClubChat';
 import CreateClub from './native/screens/CreateClub';
 import Profile from './native/screens/Profile';
 import EditProfile from './native/screens/EditProfile';
@@ -27,6 +28,7 @@ import ActivityChat from './native/screens/ActivityChat';
 import ActivityDetail from './native/screens/ActivityDetail';
 import ActivityManagement from './native/screens/ActivityManagement';
 import ClubManagement from './native/screens/ClubManagement';
+import UserProfile from './native/screens/UserProfile';
 
 // Import custom tab bar
 import CustomTabBar from './native/navigation/CustomTabBar';
@@ -51,12 +53,14 @@ function TabScreens() {
           <Stack.Screen name="Create" component={CreateActivity} />
           <Stack.Screen name="Clubs" component={Clubs} />
           <Stack.Screen name="ClubDetail" component={ClubDetail} />
+          <Stack.Screen name="ClubChat" component={ClubChat} />
           <Stack.Screen name="CreateClub" component={CreateClub} />
           <Stack.Screen name="ActivityDetail" component={ActivityDetail} />
           <Stack.Screen name="ActivityChat" component={ActivityChat} />
           <Stack.Screen name="ActivityManagement" component={ActivityManagement} />
           <Stack.Screen name="ClubManagement" component={ClubManagement} />
           <Stack.Screen name="Profile" component={Profile} />
+          <Stack.Screen name="UserProfile" component={UserProfile} />
           <Stack.Screen name="EditProfile" component={EditProfile} />
           <Stack.Screen name="Settings" component={Settings} />
           <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
@@ -83,6 +87,8 @@ export default function App() {
             <Stack.Screen name="Splash" component={SplashScreen} />
             <Stack.Screen name="Login" component={Login} />
             <Stack.Screen name="SignUp" component={SignUp} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
+            <Stack.Screen name="TermsOfService" component={TermsOfService} />
             <Stack.Screen name="EmailVerification" component={EmailVerification} />
             <Stack.Screen name="ProfileSetup" component={ProfileSetup} />
             <Stack.Screen name="MainTabs" component={TabScreens} />
