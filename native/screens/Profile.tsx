@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -52,6 +52,8 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [showReportModal, setShowReportModal] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [showActivityModal, setShowActivityModal] = useState(false);
 
   const loadProfileData = async () => {
     if (!user) return;
@@ -278,7 +280,15 @@ export default function Profile() {
             <Text style={styles.emptyText}>No completed activities yet</Text>
           ) : (
             filteredActivities.joined.map((joined) => (
-              <View key={joined.id} style={styles.activityCard}>
+              <TouchableOpacity
+                key={joined.id}
+                style={styles.activityCard}
+                onPress={() => {
+                  setSelectedActivity(joined.activity);
+                  setShowActivityModal(true);
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.activityTitle}>{joined.activity.title}</Text>
                 <Text style={styles.activityDetails}>
                   {joined.activity.date} • {joined.activity.location}
@@ -286,7 +296,7 @@ export default function Profile() {
                 <View style={styles.completedBadge}>
                   <Text style={styles.completedBadgeText}>✓ Completed</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -297,7 +307,12 @@ export default function Profile() {
             <Text style={styles.sectionTitle}>Clubs</Text>
             <View style={styles.clubsContainer}>
               {profileData.clubs.map((club) => (
-                <View key={club.id} style={styles.clubBadge}>
+                <TouchableOpacity
+                  key={club.id}
+                  style={styles.clubBadge}
+                  onPress={() => navigation.navigate('ClubDetail' as never, { clubId: club.id } as never)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.clubIcon}>
                     <Text style={styles.clubIconText}>
                       {club.name.charAt(0).toUpperCase()}
@@ -309,7 +324,8 @@ export default function Profile() {
                       <Text style={styles.clubRole}>Admin</Text>
                     )}
                   </View>
-                </View>
+                  <Text style={styles.clubArrow}>→</Text>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -317,6 +333,69 @@ export default function Profile() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Activity Summary Modal */}
+      <Modal
+        visible={showActivityModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowActivityModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Activity Summary</Text>
+              <TouchableOpacity onPress={() => setShowActivityModal(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedActivity && (
+              <View style={styles.modalBody}>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Activity</Text>
+                  <Text style={styles.summaryValue}>{selectedActivity.title}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Type</Text>
+                  <Text style={styles.summaryValue}>
+                    {selectedActivity.type === 'cycling' ? '🚴 Cycling' :
+                     selectedActivity.type === 'climbing' ? '🧗 Climbing' :
+                     selectedActivity.type === 'running' ? '🏃 Running' : selectedActivity.type}
+                  </Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Date</Text>
+                  <Text style={styles.summaryValue}>{selectedActivity.date}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Location</Text>
+                  <Text style={styles.summaryValue}>{selectedActivity.location}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Max Participants</Text>
+                  <Text style={styles.summaryValue}>{selectedActivity.max_participants}</Text>
+                </View>
+
+                <View style={styles.completedBadgeLarge}>
+                  <Text style={styles.completedBadgeLargeText}>✓ Completed</Text>
+                </View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setShowActivityModal(false)}
+            >
+              <Text style={styles.modalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -544,5 +623,86 @@ const styles = StyleSheet.create({
     color: '#4A7C59',
     fontWeight: '600',
     marginTop: 2,
+  },
+  clubArrow: {
+    fontSize: 18,
+    color: '#999',
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  modalClose: {
+    fontSize: 24,
+    color: '#666',
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  summaryRow: {
+    marginBottom: 16,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summaryValue: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '600',
+  },
+  completedBadgeLarge: {
+    alignSelf: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  completedBadgeLargeText: {
+    fontSize: 16,
+    color: '#4A7C59',
+    fontWeight: '600',
+  },
+  modalButton: {
+    backgroundColor: '#4A7C59',
+    padding: 16,
+    alignItems: 'center',
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 12,
+  },
+  modalButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

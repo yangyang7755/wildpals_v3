@@ -131,16 +131,52 @@ export default function Explore() {
           (joinRequests || []).map(jr => [jr.activity_id, jr.status])
         );
 
+        // Fetch actual participant counts for all activities
+        const { data: participantCounts } = await supabase
+          .from('join_requests')
+          .select('activity_id')
+          .eq('status', 'accepted')
+          .in('activity_id', activityIds);
+
+        // Count participants per activity
+        const participantCountMap = new Map<string, number>();
+        (participantCounts || []).forEach(pc => {
+          const count = participantCountMap.get(pc.activity_id) || 0;
+          participantCountMap.set(pc.activity_id, count + 1);
+        });
+
         const activitiesWithStatus = filteredData.map(activity => ({
           ...activity,
           joinRequestStatus: joinRequestMap.get(activity.id) || null,
+          current_participants: participantCountMap.get(activity.id) || 0,
         }));
 
         setActivities(activitiesWithStatus);
       } else {
         // If no user logged in, only show public activities
         filteredData = data?.filter(activity => !activity.club_members_only) || [];
-        setActivities(filteredData);
+        
+        // Fetch actual participant counts for public activities
+        const activityIds = filteredData.map(a => a.id);
+        const { data: participantCounts } = await supabase
+          .from('join_requests')
+          .select('activity_id')
+          .eq('status', 'accepted')
+          .in('activity_id', activityIds);
+
+        // Count participants per activity
+        const participantCountMap = new Map<string, number>();
+        (participantCounts || []).forEach(pc => {
+          const count = participantCountMap.get(pc.activity_id) || 0;
+          participantCountMap.set(pc.activity_id, count + 1);
+        });
+
+        const activitiesWithCounts = filteredData.map(activity => ({
+          ...activity,
+          current_participants: participantCountMap.get(activity.id) || 0,
+        }));
+
+        setActivities(activitiesWithCounts);
       }
     } catch (error) {
       console.error('Error loading activities:', error);
@@ -280,8 +316,89 @@ export default function Explore() {
     }
   };
 
+  const handleLeaveActivity = async (activity: Activity) => {
+    if (!user) return;
+
+    const status = activity.joinRequestStatus;
+    
+    // For pending, just cancel without confirmation
+    if (status === 'pending') {
+      try {
+        const { error } = await supabase
+          .from('join_requests')
+          .delete()
+          .eq('activity_id', activity.id)
+          .eq('requester_id', user.id);
+
+        if (error) throw error;
+
+        // Immediately update local state - don't reload to avoid race condition
+        setActivities(prevActivities => 
+          prevActivities.map(a => 
+            a.id === activity.id 
+              ? { ...a, joinRequestStatus: null }
+              : a
+          )
+        );
+
+        Alert.alert('Request Cancelled', 'Your join request has been cancelled');
+      } catch (error: any) {
+        console.error('Error cancelling request:', error);
+        Alert.alert('Error', error.message || 'Failed to cancel request');
+        // Only reload on error to restore correct state
+        loadActivities();
+      }
+      return;
+    }
+
+    // For joined (accepted), require confirmation
+    Alert.alert(
+      'Leave Activity',
+      `Are you sure you want to leave "${activity.title}"?`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete the join request
+              const { error: deleteError } = await supabase
+                .from('join_requests')
+                .delete()
+                .eq('activity_id', activity.id)
+                .eq('requester_id', user.id);
+
+              if (deleteError) throw deleteError;
+
+              // Immediately update local state - don't reload to avoid race condition
+              setActivities(prevActivities => 
+                prevActivities.map(a => 
+                  a.id === activity.id 
+                    ? { 
+                        ...a, 
+                        joinRequestStatus: null,
+                        current_participants: Math.max(0, a.current_participants - 1)
+                      }
+                    : a
+                )
+              );
+
+              Alert.alert('Left Activity', 'You have left the activity');
+            } catch (error: any) {
+              console.error('Error leaving activity:', error);
+              Alert.alert('Error', error.message || 'Failed to leave activity');
+              // Only reload on error to restore correct state
+              loadActivities();
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderActivity = ({ item }: { item: Activity }) => {
-    const organizerName = item.profiles?.full_name || 'Unknown';
+    const organizerName = item.profiles?.full_name || 'Unknown Organizer';
     const organizerInitial = organizerName.charAt(0).toUpperCase();
     const isFull = item.current_participants >= item.max_participants;
     const spotsText = isFull 
@@ -291,22 +408,22 @@ export default function Explore() {
     // Determine button state based on join request status
     const getButtonState = () => {
       if (isFull) {
-        return { text: 'Activity Full', disabled: true, style: styles.joinButtonDisabled };
+        return { text: 'Activity Full', disabled: true, style: styles.joinButtonDisabled, onPress: null };
       }
       
       if (!item.joinRequestStatus) {
-        return { text: 'Request to Join', disabled: false, style: styles.joinButton };
+        return { text: 'Request to Join', disabled: false, style: styles.joinButton, onPress: () => handleRequestJoin(item) };
       }
       
       switch (item.joinRequestStatus) {
         case 'pending':
-          return { text: 'Pending', disabled: true, style: styles.joinButtonPending };
+          return { text: 'Pending', disabled: false, style: styles.joinButtonPending, onPress: () => handleLeaveActivity(item) };
         case 'accepted':
-          return { text: 'Joined ✓', disabled: true, style: styles.joinButtonJoined };
+          return { text: 'Joined ✓', disabled: false, style: styles.joinButtonJoined, onPress: () => handleLeaveActivity(item) };
         case 'rejected':
-          return { text: 'Request Declined', disabled: true, style: styles.joinButtonRejected };
+          return { text: 'Request Declined', disabled: true, style: styles.joinButtonRejected, onPress: null };
         default:
-          return { text: 'Request to Join', disabled: false, style: styles.joinButton };
+          return { text: 'Request to Join', disabled: false, style: styles.joinButton, onPress: () => handleRequestJoin(item) };
       }
     };
     
@@ -400,7 +517,7 @@ export default function Explore() {
           style={buttonState.style}
           onPress={(e) => {
             e.stopPropagation();
-            if (!buttonState.disabled) handleRequestJoin(item);
+            if (buttonState.onPress) buttonState.onPress();
           }}
           disabled={buttonState.disabled}
         >

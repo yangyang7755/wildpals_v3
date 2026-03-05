@@ -26,11 +26,30 @@ export default function Login() {
       return;
     }
 
-    const success = await login(email, password);
-    if (success) {
-      navigation.navigate('MainTabs' as never);
-    } else {
-      Alert.alert('Error', 'Invalid email or password');
+    try {
+      const success = await login(email, password);
+      if (success) {
+        navigation.navigate('MainTabs' as never);
+      } else {
+        Alert.alert('Error', 'Invalid email or password');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Safely extract error message
+      let errorMessage = 'Failed to log in. Please try again.';
+      
+      if (error && typeof error === 'object') {
+        if (error.message && typeof error.message === 'string') {
+          errorMessage = error.message;
+        } else if (error.error_description && typeof error.error_description === 'string') {
+          errorMessage = error.error_description;
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      Alert.alert('Login Error', errorMessage);
     }
   };
 

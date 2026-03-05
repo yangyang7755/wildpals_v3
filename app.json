@@ -22,7 +22,8 @@
       "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleIconName": "AppIcon"
+        "CFBundleIconName": "AppIcon",
+        "UIPrerenderedIcon": true
       }
     },
     "android": {
@@ -49,7 +50,9 @@
     "extra": {
       "eas": {
         "projectId": "8b5b2bcc-fb77-46ce-8732-dca04d00c2de"
-      }
+      },
+      "EXPO_PUBLIC_SUPABASE_URL": "https://xikaltnufqbysnrsjzwa.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhpa2FsdG51ZnFieXNucnNqendhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3ODUxNzcsImV4cCI6MjA4NzM2MTE3N30.XOl4QElrOuAsuRUjgurr2HHCsamgKivfElYJhtU_0tU"
     }
   }
 }

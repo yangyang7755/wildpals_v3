@@ -20,6 +20,7 @@ interface Club {
   location: string;
   sport_type: string;
   member_count: number;
+  actual_member_count?: number; // Actual count from club_members
   creator_id: string;
   is_private: boolean;
 }
@@ -31,6 +32,9 @@ export default function Clubs() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSportType, setSelectedSportType] = useState<'all' | 'cycling' | 'climbing' | 'running'>('all');
+  const [selectedLocation, setSelectedLocation] = useState<'all' | 'London' | 'Oxford' | 'Boston'>('all');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   // Color palette for club avatars
   const clubColors = [
@@ -68,13 +72,33 @@ export default function Clubs() {
 
   const loadClubs = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: clubsData, error } = await supabase
         .from('clubs')
         .select('*')
         .order('member_count', { ascending: false });
 
       if (error) throw error;
-      setClubs(data || []);
+
+      // Fetch actual member counts for each club
+      if (clubsData) {
+        const clubsWithCounts = await Promise.all(
+          clubsData.map(async (club) => {
+            const { count } = await supabase
+              .from('club_members')
+              .select('*', { count: 'exact', head: true })
+              .eq('club_id', club.id)
+              .eq('status', 'active');
+
+            return {
+              ...club,
+              actual_member_count: count || 0,
+            };
+          })
+        );
+        setClubs(clubsWithCounts);
+      } else {
+        setClubs([]);
+      }
     } catch (error) {
       console.error('Error loading clubs:', error);
     } finally {
@@ -93,7 +117,14 @@ export default function Clubs() {
       (club.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (club.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (club.sport_type || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
+    
+    const matchesSportType = selectedSportType === 'all' || 
+      (club.sport_type || '').toLowerCase() === selectedSportType.toLowerCase();
+    
+    const matchesLocation = selectedLocation === 'all' || 
+      (club.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+    
+    return matchesSearch && matchesSportType && matchesLocation;
   });
 
   const renderClub = ({ item }: { item: Club }) => {
@@ -115,7 +146,7 @@ export default function Clubs() {
               {item.is_private && <Text style={styles.privateIcon}>🔒</Text>}
             </View>
             <Text style={styles.clubLocation}>📍 {item.location}</Text>
-            <Text style={styles.clubMembers}>👥 {item.member_count} members</Text>
+            <Text style={styles.clubMembers}>👥 {item.actual_member_count ?? item.member_count} members</Text>
           </View>
         </View>
         
@@ -155,15 +186,76 @@ export default function Clubs() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search clubs..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      <View style={styles.searchRow}>
+        <View style={styles.searchContainer}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search clubs..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.locationButton}
+          onPress={() => setShowLocationPicker(!showLocationPicker)}
+        >
+          <Text style={styles.locationButtonText}>
+            {selectedLocation === 'all' ? '📍 All' : `📍 ${selectedLocation}`}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {showLocationPicker && (
+        <View style={styles.locationPicker}>
+          {['all', 'London', 'Oxford', 'Boston'].map((location) => (
+            <TouchableOpacity
+              key={location}
+              style={[
+                styles.locationOption,
+                selectedLocation === location && styles.locationOptionActive
+              ]}
+              onPress={() => {
+                setSelectedLocation(location as any);
+                setShowLocationPicker(false);
+              }}
+            >
+              <Text style={[
+                styles.locationOptionText,
+                selectedLocation === location && styles.locationOptionTextActive
+              ]}>
+                {location === 'all' ? 'All Locations' : location}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.filterTabs}>
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'cycling', label: 'Cycling' },
+          { key: 'climbing', label: 'Climbing' },
+          { key: 'running', label: 'Running' }
+        ].map((filter) => (
+          <TouchableOpacity
+            key={filter.key}
+            style={[
+              styles.filterTab,
+              selectedSportType === filter.key && styles.filterTabActive
+            ]}
+            onPress={() => setSelectedSportType(filter.key as any)}
+          >
+            <Text style={[
+              styles.filterTabText,
+              selectedSportType === filter.key && styles.filterTabTextActive
+            ]}>
+              {filter.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {filteredClubs.length === 0 ? (
@@ -234,11 +326,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  searchContainer: {
+  searchRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     marginHorizontal: 20,
     marginBottom: 16,
+    gap: 8,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#F5F5F5',
@@ -252,6 +349,73 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#000',
+  },
+  locationButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#4A7C59',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  locationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  locationPicker: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  locationOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  locationOptionActive: {
+    backgroundColor: '#E8F5E9',
+  },
+  locationOptionText: {
+    fontSize: 15,
+    color: '#666',
+  },
+  locationOptionTextActive: {
+    color: '#4A7C59',
+    fontWeight: '600',
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  filterTabActive: {
+    backgroundColor: '#4A7C59',
+  },
+  filterTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  filterTabTextActive: {
+    color: 'white',
   },
   listContent: {
     paddingHorizontal: 20,

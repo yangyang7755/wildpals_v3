@@ -112,12 +112,14 @@ export default function ActivityManagement() {
   const handleAcceptRequest = async (requestId: string, userName: string) => {
     setProcessingId(requestId);
     try {
-      const { error } = await supabase
+      // Update join request status
+      const { error: updateError } = await supabase
         .from('join_requests')
         .update({ status: 'accepted' })
         .eq('id', requestId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
       Alert.alert('Success', `${userName} has been accepted!`);
       loadActivityData();
     } catch (error: any) {
@@ -139,16 +141,28 @@ export default function ActivityManagement() {
           onPress: async () => {
             setProcessingId(requestId);
             try {
+              console.log('Attempting to reject request:', requestId);
+              
+              // Try to delete the request instead of updating status
+              // This is cleaner and avoids potential RLS issues
               const { error } = await supabase
                 .from('join_requests')
-                .update({ status: 'rejected' })
+                .delete()
                 .eq('id', requestId);
 
-              if (error) throw error;
+              console.log('Reject response:', { error });
+
+              if (error) {
+                console.error('Reject error details:', error);
+                throw error;
+              }
+              
               Alert.alert('Request Rejected', `${userName}'s request has been rejected`);
               loadActivityData();
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to reject request');
+              console.error('Caught error:', error);
+              const errorMessage = error?.message || error?.error_description || 'Failed to reject request';
+              Alert.alert('Error', errorMessage);
             } finally {
               setProcessingId(null);
             }
@@ -272,7 +286,7 @@ export default function ActivityManagement() {
           </Text>
           <Text style={styles.activityInfo}>📍 {activity.location}</Text>
           <Text style={styles.participantCount}>
-            {activity.current_participants}/{activity.max_participants} participants
+            {participants.length}/{activity.max_participants} participants
           </Text>
         </View>
 

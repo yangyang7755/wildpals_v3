@@ -178,7 +178,9 @@ export default function ClubDetail() {
       // Transform and sort activities: admin posts first, then by date
       const transformedActivities = (activitiesData || []).map((activity: any) => ({
         ...activity,
-        profiles: Array.isArray(activity.profiles) ? activity.profiles[0] : activity.profiles,
+        profiles: Array.isArray(activity.profiles) && activity.profiles.length > 0 
+          ? activity.profiles[0] 
+          : activity.profiles,
       }));
 
       // Check which organizers are club admins
@@ -301,7 +303,7 @@ export default function ClubDetail() {
             {club.is_private && <Text style={styles.privateIcon}>🔒</Text>}
           </View>
           <Text style={styles.clubLocation}>📍 {club.location}</Text>
-          <Text style={styles.clubMembers}>👥 {club.member_count} members</Text>
+          <Text style={styles.clubMembers}>👥 {members.length} members</Text>
           <Text style={styles.clubSportType}>{club.sport_type}</Text>
           
           {club.description && (
@@ -431,7 +433,12 @@ export default function ClubDetail() {
           ) : (
             <View style={styles.membersGrid}>
               {members.map((member) => (
-                <View key={member.id} style={styles.memberCard}>
+                <TouchableOpacity
+                  key={member.id}
+                  style={styles.memberCard}
+                  onPress={() => navigation.navigate('UserProfile' as never, { userId: member.user_id } as never)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberInitial}>
                       {member.profiles?.full_name?.charAt(0).toUpperCase() || '?'}
@@ -443,7 +450,7 @@ export default function ClubDetail() {
                   {member.role === 'admin' && (
                     <Text style={styles.adminBadge}>Admin</Text>
                   )}
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}

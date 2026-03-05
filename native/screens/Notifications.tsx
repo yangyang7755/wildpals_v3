@@ -100,8 +100,12 @@ export default function NotificationsImproved() {
           message: item.message,
           created_at: item.created_at,
           status: item.status,
-          requester: Array.isArray(item.requester) ? item.requester[0] : item.requester,
-          activity: Array.isArray(item.activity) ? item.activity[0] : item.activity,
+          requester: Array.isArray(item.requester) && item.requester.length > 0 
+            ? item.requester[0] 
+            : item.requester,
+          activity: Array.isArray(item.activity) && item.activity.length > 0 
+            ? item.activity[0] 
+            : item.activity,
         }))
         .filter((item: any) => item.requester && item.activity);
 

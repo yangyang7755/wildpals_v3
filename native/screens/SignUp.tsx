@@ -117,11 +117,26 @@ export default function SignUp() {
         (navigation as any).navigate('EmailVerification', { email });
       }
     } catch (error: any) {
-      // Display the specific error message from AuthContext
-      const errorMessage = error.message || 'Failed to create account. Please try again.';
+      console.error('SignUp error:', error);
+      
+      // Safely extract error message
+      let errorMessage = 'Failed to create account. Please try again.';
+      
+      if (error && typeof error === 'object') {
+        if (error.message && typeof error.message === 'string') {
+          errorMessage = error.message;
+        } else if (error.error_description && typeof error.error_description === 'string') {
+          errorMessage = error.error_description;
+        } else if (typeof error.toString === 'function') {
+          errorMessage = error.toString();
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
       
       // If email already exists, offer to go to login
-      if (errorMessage.includes('already registered')) {
+      if (errorMessage.toLowerCase().includes('already registered') || 
+          errorMessage.toLowerCase().includes('already exists')) {
         Alert.alert(
           'Email Already Registered',
           'This email is already registered. Would you like to log in instead?',

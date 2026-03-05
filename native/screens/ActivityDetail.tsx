@@ -49,6 +49,7 @@ interface Activity {
 
 interface Participant {
   id: string;
+  user_id: string;
   profiles: {
     full_name: string;
   };
@@ -96,6 +97,7 @@ export default function ActivityDetail() {
         .from('join_requests')
         .select(`
           id,
+          user_id: requester_id,
           profiles:requester_id (
             full_name
           )
@@ -107,16 +109,21 @@ export default function ActivityDetail() {
 
       // Check user's join status
       if (user) {
-        const { data: joinData } = await supabase
+        const { data: joinData, error: joinError } = await supabase
           .from('join_requests')
           .select('status')
           .eq('activity_id', activityId)
           .eq('requester_id', user.id)
-          .single();
+          .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 or 1 rows
 
         // Only set status if data exists, otherwise explicitly set to null
-        setUserStatus(joinData?.status || null);
-        console.log('User status for activity:', joinData?.status || 'none');
+        if (joinError) {
+          console.error('Error fetching join status:', joinError);
+          setUserStatus(null);
+        } else {
+          setUserStatus(joinData?.status || null);
+          console.log('User status for activity:', joinData?.status || 'none');
+        }
       } else {
         setUserStatus(null);
       }
@@ -161,9 +168,93 @@ export default function ActivityDetail() {
     }
   };
 
-  const openRouteLink = () => {
+  const handleCancelRequest = () => {
+    Alert.alert(
+      'Cancel Request',
+      'Are you sure you want to cancel your join request?',
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes', onPress: cancelJoinRequest, style: 'destructive' }
+      ]
+    );
+  };
+
+  const cancelJoinRequest = async () => {
+    if (!activity || !user) return;
+
+    try {
+      const { error } = await supabase
+        .from('join_requests')
+        .delete()
+        .eq('activity_id', activity.id)
+        .eq('requester_id', user.id)
+        .eq('status', 'pending');
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Your join request has been cancelled');
+      setUserStatus(null);
+    } catch (error: any) {
+      console.error('Error cancelling join request:', error);
+      Alert.alert('Error', error.message || 'Failed to cancel join request');
+    }
+  };
+
+  const handleLeaveActivity = () => {
+    Alert.alert(
+      'Leave Activity',
+      `Are you sure you want to leave "${activity?.title}"?`,
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Leave', onPress: leaveActivity, style: 'destructive' }
+      ]
+    );
+  };
+
+  const leaveActivity = async () => {
+    if (!activity || !user) return;
+
+    try {
+      console.log('Attempting to leave activity:', activity.id, 'for user:', user.id);
+      
+      const { error, data } = await supabase
+        .from('join_requests')
+        .delete()
+        .eq('activity_id', activity.id)
+        .eq('requester_id', user.id)
+        .eq('status', 'accepted')
+        .select(); // Add select to see what was deleted
+
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
+
+      console.log('Successfully deleted join request:', data);
+      
+      Alert.alert('Left Activity', 'You have left the activity');
+      setUserStatus(null);
+      // Update participants list
+      setParticipants(prev => prev.filter(p => p.user_id !== user.id));
+    } catch (error: any) {
+      console.error('Error leaving activity:', error);
+      Alert.alert('Error', error.message || 'Failed to leave activity');
+    }
+  };
+
+  const openRouteLink = async () => {
     if (activity?.route_link) {
-      Linking.openURL(activity.route_link);
+      try {
+        const supported = await Linking.canOpenURL(activity.route_link);
+        if (supported) {
+          await Linking.openURL(activity.route_link);
+        } else {
+          Alert.alert('Error', 'Cannot open this link');
+        }
+      } catch (error) {
+        console.error('Error opening link:', error);
+        Alert.alert('Error', 'Failed to open link');
+      }
     }
   };
 
@@ -192,10 +283,11 @@ export default function ActivityDetail() {
   };
 
   const isOrganizer = user?.id === activity?.organizer_id;
-  const isFull = (activity?.current_participants || 0) >= (activity?.max_participants || 0);
+  const isFull = participants.length >= (activity?.max_participants || 0);
   const canJoin = !isOrganizer && !userStatus && !isFull;
-  // Only show chat if user is organizer OR has been explicitly accepted
-  const canViewChat = isOrganizer || userStatus === 'accepted';
+  // Only show chat if user has been explicitly accepted (joined the activity)
+  // Organizers should NOT see the chat button
+  const canViewChat = !isOrganizer && userStatus === 'accepted';
 
   // Debug logging
   console.log('Activity Detail Debug:', {
@@ -323,18 +415,23 @@ export default function ActivityDetail() {
             styles.participantCount,
             isFull && styles.participantCountFull
           ]}>
-            {activity.current_participants}/{activity.max_participants} spots
+            {participants.length}/{activity.max_participants} spots
             {isFull && ' (Full)'}
           </Text>
           
           {participants.length > 0 && (
             <View style={styles.participantsList}>
               {participants.map((participant) => (
-                <View key={participant.id} style={styles.participantChip}>
+                <TouchableOpacity
+                  key={participant.id}
+                  style={styles.participantChip}
+                  onPress={() => navigation.navigate('UserProfile' as never, { userId: participant.user_id } as never)}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.participantName}>
                     {participant.profiles?.full_name || 'User'}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -419,11 +516,26 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Show pending status */}
+        {/* Show pending status - now clickable to cancel */}
         {!isOrganizer && userStatus === 'pending' && (
-          <View style={styles.statusBadge}>
+          <TouchableOpacity
+            style={styles.statusBadge}
+            onPress={handleCancelRequest}
+          >
             <Text style={styles.statusText}>⏳ Request Pending</Text>
-          </View>
+            <Text style={styles.statusSubtext}>Tap to cancel</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Show joined status - clickable to leave */}
+        {!isOrganizer && userStatus === 'accepted' && (
+          <TouchableOpacity
+            style={[styles.statusBadge, styles.joinedBadge]}
+            onPress={handleLeaveActivity}
+          >
+            <Text style={[styles.statusText, styles.joinedText]}>✓ Joined</Text>
+            <Text style={[styles.statusSubtext, styles.joinedSubtext]}>Tap to leave</Text>
+          </TouchableOpacity>
         )}
 
         {/* Show full status */}
@@ -737,10 +849,25 @@ const styles = StyleSheet.create({
   fullBadge: {
     backgroundColor: '#FFEBEE',
   },
+  joinedBadge: {
+    backgroundColor: '#E8F5E9',
+  },
   statusText: {
     color: '#F57C00',
     fontSize: 16,
     fontWeight: '600',
+  },
+  joinedText: {
+    color: '#4A7C59',
+  },
+  statusSubtext: {
+    color: '#F57C00',
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.8,
+  },
+  joinedSubtext: {
+    color: '#4A7C59',
   },
   modalOverlay: {
     flex: 1,

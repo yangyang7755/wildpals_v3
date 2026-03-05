@@ -161,25 +161,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('=== LOGIN ATTEMPT ===');
+      console.log('Email:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      console.log('=== LOGIN RESPONSE ===');
+      console.log('Error:', error);
+      console.log('User ID:', data?.user?.id);
+
       if (error) {
-        console.error('Login error:', error.message);
-        return false;
+        console.error('❌ Login error:', error.message);
+        console.error('Full error object:', JSON.stringify(error, null, 2));
+        throw new Error(error.message || 'Invalid email or password');
       }
 
       if (data.user) {
+        console.log('✅ Login successful');
         await loadUserProfile(data.user);
         return true;
       }
 
+      console.log('⚠️ Login completed but no user returned');
       return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      return false;
+    } catch (error: any) {
+      console.error('❌ Login error caught:', error);
+      throw error; // Re-throw to be caught by the calling function
     }
   };
 

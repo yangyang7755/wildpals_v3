@@ -175,7 +175,15 @@ export default function ActivityChat() {
         })),
       ];
 
-      setParticipants(allParticipants);
+      // Deduplicate by user_id to ensure each user appears only once
+      const uniqueParticipants = allParticipants.reduce((acc, participant) => {
+        if (!acc.find(p => p.user_id === participant.user_id)) {
+          acc.push(participant);
+        }
+        return acc;
+      }, [] as typeof allParticipants);
+
+      setParticipants(uniqueParticipants);
     } catch (error) {
       console.error('Error loading participants:', error);
     }

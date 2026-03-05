@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iOS Icon Preview - Wildpals</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .preview-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .preview-box {
+            text-align: center;
+        }
+        
+        .preview-box h3 {
+            margin-bottom: 15px;
+            color: #444;
+            font-size: 16px;
+        }
+        
+        .icon-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin: 0 auto;
+            background: #f0f0f0;
+        }
+        
+        #originalIcon {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #previewIcon {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 22.37%;
+        }
+        
+        .safe-area-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+        
+        .safe-area-circle {
+            position: absolute;
+            border: 3px dashed #ff4444;
+            border-radius: 50%;
+            box-sizing: border-box;
+        }
+        
+        .controls {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .value-display {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        
+        .info-box h4 {
+            margin-bottom: 8px;
+            color: #1976d2;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            color: #555;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .preview-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 iOS Icon Preview Tool</h1>
+        <p class="subtitle">Visualize how your icon will look with iOS rounded corners</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <p style="font-size: 18px; margin-bottom: 10px;">📁 Drop your icon here or click to upload</p>
+            <p style="color: #666; font-size: 14px;">Supports PNG, JPG (recommended: 1024x1024px)</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>
+                    Safe Area Padding (how much to shrink your logo)
+                    <span class="value-display" id="paddingValue">10%</span>
+                </label>
+                <input type="range" id="paddingSlider" min="0" max="30" value="10" step="1">
+            </div>
+            
+            <div class="control-group">
+                <label>
+                    Show Safe Area Guide
+                    <input type="checkbox" id="showGuide" checked style="margin-left: 10px;">
+                </label>
+            </div>
+        </div>
+        
+        <div class="preview-grid">
+            <div class="preview-box">
+                <h3>Original Icon</h3>
+                <div class="icon-container">
+                    <img id="originalIcon" src="assets/icon.png" alt="Original Icon">
+                </div>
+            </div>
+            
+            <div class="preview-box">
+                <h3>iOS Preview (with rounded corners)</h3>
+                <div class="icon-container">
+                    <img id="previewIcon" src="assets/icon.png" alt="iOS Preview">
+                    <div class="safe-area-overlay" id="safeAreaOverlay">
+                        <div class="safe-area-circle" id="safeAreaCircle"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h4>💡 Tips for Perfect iOS Icons:</h4>
+            <ul>
+                <li>iOS applies 22.37% rounded corners automatically (cannot be disabled)</li>
+                <li>Keep important content within the red circle (safe area)</li>
+                <li>Recommended safe area: 10-15% padding from edges</li>
+                <li>Export at 1024x1024px with no transparency</li>
+                <li>Test how it looks at different sizes (home screen, settings, etc.)</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const originalIcon = document.getElementById('originalIcon');
+        const previewIcon = document.getElementById('previewIcon');
+        const paddingSlider = document.getElementById('paddingSlider');
+        const paddingValue = document.getElementById('paddingValue');
+        const showGuide = document.getElementById('showGuide');
+        const safeAreaOverlay = document.getElementById('safeAreaOverlay');
+        const safeAreaCircle = document.getElementById('safeAreaCircle');
+
+        // Upload area click
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                loadImage(file);
+            }
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadImage(file);
+            }
+        });
+
+        // Load image
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalIcon.src = e.target.result;
+                previewIcon.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Update safe area
+        function updateSafeArea() {
+            const padding = paddingSlider.value;
+            paddingValue.textContent = padding + '%';
+            
+            const size = 100 - (padding * 2);
+            safeAreaCircle.style.width = size + '%';
+            safeAreaCircle.style.height = size + '%';
+            safeAreaCircle.style.top = padding + '%';
+            safeAreaCircle.style.left = padding + '%';
+            
+            safeAreaOverlay.style.display = showGuide.checked ? 'block' : 'none';
+        }
+
+        paddingSlider.addEventListener('input', updateSafeArea);
+        showGuide.addEventListener('change', updateSafeArea);
+
+        // Initialize
+        updateSafeArea();
+    </script>
+</body>
+</html>

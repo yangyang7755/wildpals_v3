@@ -1,85 +1,64 @@
-# Final Fix for Icon Issue
+# App Icon Display Issue - Fix Guide
 
-## Changes Made
+## Problem
+App icon appears slightly different after uploading to TestFlight/App Store.
 
-1. **Installed expo-build-properties plugin**
+## Root Cause
+iOS automatically applies visual effects to app icons unless explicitly disabled.
+
+## Solution Applied
+
+### 1. Added `UIPrerenderedIcon` Flag
+Updated `app.json` to include `"UIPrerenderedIcon": true` in iOS infoPlist. This tells iOS to use the icon exactly as provided without applying gloss effects.
+
+### 2. Verified Icon Specifications
+Current icon meets all Apple requirements:
+- ✓ Dimensions: 1024x1024 pixels
+- ✓ No transparency (hasAlpha: no)
+- ✓ Format: PNG
+- ✓ Color space: RGB
+
+## Additional Recommendations
+
+### If Icon Still Looks Different:
+
+1. **Check for rounded corners**: iOS always applies rounded corners to app icons. This is standard and cannot be disabled. Design your icon with this in mind.
+
+2. **Verify icon design**:
+   - Ensure important content is not too close to edges (iOS will crop with rounded corners)
+   - Use a safe area of approximately 90% of the icon size for critical content
+
+3. **Test in different contexts**:
+   - Home screen
+   - App Store listing
+   - Settings app
+   - Spotlight search
+   
+   Icons may appear slightly different in each context due to iOS rendering.
+
+4. **Regenerate icon assets** (if needed):
    ```bash
-   npm install expo-build-properties
+   # Use Expo's icon generation
+   npx expo prebuild --clean
    ```
-
-2. **Updated app.json**
-   - Added `expo-build-properties` plugin with static frameworks
-   - Re-added explicit `icon` path in iOS config
-   - Re-added `CFBundleIconName: "AppIcon"` in infoPlist
-   - Incremented build number to 7
-
-3. **Why this should work**
-   - The `expo-build-properties` plugin forces proper native build configuration
-   - Static frameworks ensure asset catalog is generated correctly
-   - Explicit icon path + CFBundleIconName tells iOS exactly where to find icons
 
 ## Next Steps
 
-1. **Verify icon file is correct**
+1. Rebuild the app with the updated configuration:
    ```bash
-   sips -g all assets/icon.png
-   ```
-   Should show:
-   - pixelWidth: 1024
-   - pixelHeight: 1024
-   - format: png
-
-2. **Clean build**
-   ```bash
-   eas build --platform ios --profile production --clear-cache
+   eas build --platform ios --profile production
    ```
 
-3. **Wait for build to complete**
+2. Upload to TestFlight and verify the icon appearance
 
-4. **Submit to App Store**
-   ```bash
-   eas submit --platform ios --latest
-   ```
+3. If still not satisfied, you may need to adjust the source icon design to account for iOS's rounded corners
 
-## Alternative: Manual Xcode Build (If EAS Still Fails)
+## Technical Details
 
-If EAS continues to fail, you can build locally with Xcode:
+- **UIPrerenderedIcon**: When set to `true`, iOS uses the icon as-is without applying gloss effects
+- **Rounded corners**: Applied by iOS automatically (radius ~22.37% of icon size)
+- **Icon sizes**: Expo automatically generates all required sizes from the 1024x1024 source
 
-1. **Generate native iOS project**
-   ```bash
-   npx expo prebuild --platform ios --clean
-   ```
-
-2. **Open in Xcode**
-   ```bash
-   open ios/wildpals.xcworkspace
-   ```
-
-3. **In Xcode:**
-   - Select "wildpals" target
-   - Go to "Signing & Capabilities"
-   - Select your team
-   - Go to "General" > "App Icons and Launch Screen"
-   - Verify AppIcon is set
-   - Product > Archive
-   - Distribute App > App Store Connect
-
-4. **Upload via Xcode Organizer**
-
-## Why This Issue Keeps Happening
-
-Expo/EAS has a known bug where the asset catalog generation sometimes fails. The issue is:
-- Expo should auto-generate all icon sizes from 1024x1024
-- Sometimes the build process skips this step
-- The `expo-build-properties` plugin forces proper native configuration
-- If that still fails, manual Xcode build is the only solution
-
-## Verification After Build
-
-After the build completes, you can verify the .ipa contains icons:
-1. Download the .ipa from EAS
-2. Rename to .zip and extract
-3. Check `Payload/Wildpals.app/` for icon files:
-   - AppIcon60x60@2x.png (120x120)
-   - AppIcon60x60@3x.png (180x180)
-   - etc.
+## Reference
+- Apple Human Interface Guidelines: App Icons
+- Expo documentation: app.json configuration

@@ -362,7 +362,12 @@ export default function UserProfile() {
             <Text style={styles.sectionTitle}>Clubs</Text>
             <View style={styles.clubsContainer}>
               {profileData.clubs.map((club) => (
-                <View key={club.id} style={styles.clubBadge}>
+                <TouchableOpacity
+                  key={club.id}
+                  style={styles.clubBadge}
+                  onPress={() => (navigation as any).navigate('ClubDetail', { clubId: club.id })}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.clubIcon}>
                     <Text style={styles.clubIconText}>
                       {club.name.charAt(0).toUpperCase()}
@@ -374,7 +379,8 @@ export default function UserProfile() {
                       <Text style={styles.clubRole}>Admin</Text>
                     )}
                   </View>
-                </View>
+                  <Text style={styles.clubArrow}>→</Text>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -635,6 +641,11 @@ const styles = StyleSheet.create({
     color: '#4A7C59',
     fontWeight: '600',
     marginTop: 2,
+  },
+  clubArrow: {
+    fontSize: 18,
+    color: '#999',
+    marginLeft: 8,
   },
   menuOverlay: {
     position: 'absolute',
