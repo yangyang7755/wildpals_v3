@@ -25,7 +25,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleIconName": "AppIcon",
-        "UIPrerenderedIcon": true
+        "UIPrerenderedIcon": true,
+        "NSLocationWhenInUseUsageDescription": "WildPals uses your city location to show nearby outdoor activities and events on the map. Your precise location is never tracked or shared.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "WildPals uses your city location to show nearby outdoor activities and events on the map."
       }
     },
     "android": {
