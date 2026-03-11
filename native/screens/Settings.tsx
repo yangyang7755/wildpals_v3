@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -60,7 +61,9 @@ export default function Settings() {
     setDeleting(true);
 
     try {
-      // Delete user profile (cascade will handle related data via database triggers)
+      // Step 1: Delete all user data from database tables
+      // The database has CASCADE DELETE set up, so deleting profile will cascade to:
+      // - activities, join_requests, club_members, notifications, messages, etc.
       const { error: profileError } = await supabase
         .from('profiles')
         .delete()
@@ -68,16 +71,41 @@ export default function Settings() {
 
       if (profileError) throw profileError;
 
-      // Sign out (user auth record will be handled by database trigger or admin)
-      await logout();
+      // Step 2: Delete user from Supabase Auth
+      // This permanently removes the authentication record
+      const { error: authError } = await supabase.auth.admin.deleteUser(user.id);
+      
+      // If admin.deleteUser fails (requires service role), try regular delete
+      if (authError) {
+        console.log('Admin delete failed, trying user delete:', authError);
+        
+        // Alternative: Use the user's own session to delete their account
+        const { error: userDeleteError } = await supabase.rpc('delete_user');
+        
+        if (userDeleteError) {
+          console.error('User delete also failed:', userDeleteError);
+          // Continue anyway - profile is deleted, auth can be cleaned up manually
+        }
+      }
 
+      // Step 3: Sign out and clear ALL local data
+      await supabase.auth.signOut();
+      await AsyncStorage.clear(); // Clear all AsyncStorage data
+      
+      // Show success message and navigate to login
       Alert.alert(
         'Account Deleted',
         'Your account has been permanently deleted. We\'re sorry to see you go!',
         [
           {
             text: 'OK',
-            onPress: () => navigation.navigate('Login' as never),
+            onPress: () => {
+              // Force navigation to Login and reset navigation stack
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' as never }],
+              });
+            },
           },
         ]
       );

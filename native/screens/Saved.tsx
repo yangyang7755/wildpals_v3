@@ -53,6 +53,10 @@ export default function Saved() {
   const loadActivities = async () => {
     if (!user) return;
 
+    console.log('=== SAVED: Loading activities for user ===');
+    console.log('User ID:', user.id);
+    console.log('User Email:', user.email);
+
     try {
       const today = new Date().toISOString().split('T')[0];
 

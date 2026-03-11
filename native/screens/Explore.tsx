@@ -16,10 +16,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useCallback } from 'react';
+import MapViewComponent from '../components/MapView';
 
 interface Activity {
   id: string;
-  type: 'cycling' | 'climbing' | 'running';
+  type: 'cycling' | 'climbing' | 'running' | 'social';
   title: string;
   date: string;
   time: string;
@@ -56,6 +57,7 @@ export default function Explore() {
   const [selectedLocation, setSelectedLocation] = useState<'all' | 'London' | 'Oxford' | 'Boston'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   useEffect(() => {
     loadActivities();
@@ -70,6 +72,14 @@ export default function Explore() {
 
   const loadActivities = async () => {
     try {
+      console.log('=== EXPLORE: Loading activities ===');
+      if (user) {
+        console.log('User ID:', user.id);
+        console.log('User Email:', user.email);
+      } else {
+        console.log('No user logged in');
+      }
+
       // Get today's date in YYYY-MM-DD format
       const today = new Date().toISOString().split('T')[0];
       
@@ -431,7 +441,10 @@ export default function Explore() {
     
     return (
       <TouchableOpacity 
-        style={styles.activityCard}
+        style={[
+          styles.activityCard,
+          item.type === 'social' && styles.socialActivityCard
+        ]}
         onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: item.id })}
         activeOpacity={0.7}
       >
@@ -448,9 +461,19 @@ export default function Explore() {
         )}
         
         <View style={styles.activityHeader}>
-          <Text style={styles.activityIcon}>{getActivityIcon(item.type)}</Text>
+          <Text style={[
+            styles.activityIcon,
+            item.type === 'social' && styles.socialActivityIcon
+          ]}>
+            {getActivityIcon(item.type)}
+          </Text>
           <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>{item.title}</Text>
+            <Text style={[
+              styles.activityTitle,
+              item.type === 'social' && styles.socialActivityTitle
+            ]}>
+              {item.title}
+            </Text>
             <View style={styles.organizerRow}>
               <View style={styles.organizerAvatar}>
                 <Text style={styles.organizerInitial}>{organizerInitial}</Text>
@@ -542,6 +565,14 @@ export default function Explore() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Explore</Text>
+        <TouchableOpacity
+          style={styles.mapToggleButton}
+          onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
+        >
+          <Text style={styles.mapToggleButtonText}>
+            {viewMode === 'list' ? '🗺️ Map' : '📋 List'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchRow}>
@@ -640,7 +671,24 @@ export default function Explore() {
         </View>
       </View>
 
-      {sortedActivities.length === 0 ? (
+      {viewMode === 'map' ? (
+        sortedActivities.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>🗺️</Text>
+            <Text style={styles.emptyTitle}>No activities to show</Text>
+            <Text style={styles.emptyText}>
+              Create an activity to see it on the map!
+            </Text>
+          </View>
+        ) : (
+          <MapViewComponent
+            activities={sortedActivities}
+            onMarkerPress={(activity) => {
+              (navigation as any).navigate('ActivityDetail', { activityId: activity.id });
+            }}
+          />
+        )
+      ) : sortedActivities.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🏔️</Text>
           <Text style={styles.emptyTitle}>No activities yet</Text>
@@ -726,6 +774,9 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -735,6 +786,17 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     color: '#4A7C59',
+  },
+  mapToggleButton: {
+    backgroundColor: '#4A7C59',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  mapToggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
   },
   searchRow: {
     flexDirection: 'row',
@@ -878,6 +940,19 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     position: 'relative',
+  },
+  socialActivityCard: {
+    backgroundColor: '#FFF9F0',
+    borderColor: '#FFB84D',
+    borderWidth: 2,
+  },
+  socialActivityIcon: {
+    fontSize: 32,
+  },
+  socialActivityTitle: {
+    fontFamily: 'System',
+    fontWeight: '700',
+    fontStyle: 'italic',
   },
   activityTypeLabel: {
     position: 'absolute',

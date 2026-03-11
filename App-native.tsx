@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, StyleSheet } from 'react-native';
+import * as Linking from 'expo-linking';
 
 // Import screens
 import SplashScreen from './native/screens/SplashScreen';
 import Login from './native/screens/Login';
 import SignUp from './native/screens/SignUp';
+import ForgotPassword from './native/screens/ForgotPassword';
+import ResetPassword from './native/screens/ResetPassword';
 import EmailVerification from './native/screens/EmailVerification';
 import ProfileSetup from './native/screens/ProfileSetup';
 import Explore from './native/screens/Explore';
@@ -73,10 +76,20 @@ function TabScreens() {
 }
 
 export default function App() {
+  const linking = {
+    prefixes: ['wildpals://', 'https://xikaltnufqbysnrsjzwa.supabase.co'],
+    config: {
+      screens: {
+        ProfileSetup: 'email-verified',
+        ResetPassword: 'reset-password',
+      },
+    },
+  };
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NavigationContainer>
+        <NavigationContainer linking={linking}>
           <StatusBar style="dark" />
           <Stack.Navigator
             initialRouteName="Splash"
@@ -87,6 +100,8 @@ export default function App() {
             <Stack.Screen name="Splash" component={SplashScreen} />
             <Stack.Screen name="Login" component={Login} />
             <Stack.Screen name="SignUp" component={SignUp} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+            <Stack.Screen name="ResetPassword" component={ResetPassword} />
             <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
             <Stack.Screen name="TermsOfService" component={TermsOfService} />
             <Stack.Screen name="EmailVerification" component={EmailVerification} />

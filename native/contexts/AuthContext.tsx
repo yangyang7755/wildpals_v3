@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -10,11 +11,17 @@ export interface User {
   hasCompletedProfile: boolean;
 }
 
+export interface SignupResult {
+  success: boolean;
+  userId?: string;
+  email?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, fullName: string, dateOfBirth?: string) => Promise<boolean>;
+  signup: (email: string, password: string, fullName: string, dateOfBirth?: string) => Promise<SignupResult>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -52,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
+      console.log('=== LOADING USER PROFILE ===');
+      console.log('Supabase User ID:', supabaseUser.id);
+      console.log('Supabase Email:', supabaseUser.email);
+      
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
@@ -67,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasCompletedProfile: !!(profile?.bio && profile?.location),
       };
 
+      console.log('✅ User profile loaded:', userData.id, userData.email);
       setUser(userData);
       await AsyncStorage.setItem('@user', JSON.stringify(userData));
     } catch (error) {
@@ -88,12 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     dateOfBirth?: string
-  ): Promise<boolean> => {
+  ): Promise<SignupResult> => {
     try {
       console.log('=== SIGNUP ATTEMPT ===');
       console.log('Email:', email);
       console.log('Full Name:', fullName);
       
+      // Create user account (email confirmation should be disabled in Supabase)
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -102,30 +115,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             full_name: fullName,
             date_of_birth: dateOfBirth,
           },
-          // Don't specify emailRedirectTo - let Supabase use its default configuration
+          emailRedirectTo: 'wildpals://email-verified',
         },
       });
 
-      console.log('=== SIGNUP RESPONSE ===');
-      console.log('Error:', error);
-      console.log('Data:', JSON.stringify(data, null, 2));
-      console.log('User ID:', data?.user?.id);
-      console.log('User Email:', data?.user?.email);
-      console.log('Email Confirmed At:', data?.user?.email_confirmed_at);
-      console.log('Confirmation Sent At:', data?.user?.confirmation_sent_at);
-
       if (error) {
-        console.error('❌ Signup error:', error.message);
-        console.error('Full error object:', JSON.stringify(error, null, 2));
+        // Handle "already registered" gracefully without logging as error
+        if (error.message.includes('already registered') || 
+            error.message.includes('already been registered') ||
+            error.message.includes('User already registered')) {
+          console.log('ℹ️ Email already registered:', email);
+          throw new Error('This email is already registered. Please log in instead.');
+        }
         
-        // Provide more specific error messages
-        if (error.message.includes('already registered') || error.message.includes('already been registered')) {
-          throw new Error('This email is already registered. Please try logging in instead.');
-        } else if (error.message.includes('confirmation email') || error.message.includes('Error sending')) {
-          throw new Error('Email service is not configured. Please contact support or try again later.');
-        } else if (error.message.includes('Invalid email') || error.message.includes('email')) {
-          throw new Error('Unable to send verification email. Please check your email address or try again later.');
-        } else if (error.message.includes('password')) {
+        // Handle other errors
+        console.error('❌ Signup error:', error.message);
+        
+        if (error.message.includes('password')) {
           throw new Error('Password does not meet requirements. Please use at least 6 characters.');
         } else {
           throw new Error(error.message || 'Failed to create account. Please try again.');
@@ -134,28 +140,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Check if user was created
       if (data?.user) {
-        console.log('✅ User created successfully!');
+        console.log('✅ User account created (unverified)');
         console.log('User ID:', data.user.id);
         console.log('Email:', data.user.email);
-        console.log('Email confirmed?', !!data.user.email_confirmed_at);
-        console.log('Confirmation sent?', !!data.user.confirmation_sent_at);
+        console.log('Email confirmed:', data.user.email_confirmed_at ? 'Yes' : 'No - verification required');
         
-        // Check if email confirmation is required
-        if (!data.user.email_confirmed_at && !data.user.confirmation_sent_at) {
-          console.warn('⚠️ WARNING: User created but no confirmation email was sent!');
-          console.warn('This means email confirmation might be disabled in Supabase.');
-        } else if (data.user.confirmation_sent_at) {
-          console.log('📧 Confirmation email sent at:', data.user.confirmation_sent_at);
-        }
-        
-        return true;
+        return { 
+          success: true, 
+          userId: data.user.id,
+          email: data.user.email || email
+        };
       }
 
-      console.log('✅ Signup completed (no user object returned - might be auto-confirmed)');
-      return true;
+      console.log('✅ Signup completed');
+      return { success: true };
     } catch (error: any) {
-      console.error('❌ Signup error caught:', error);
-      throw error; // Re-throw to be caught by the calling function
+      // Re-throw the error to be caught by SignUp screen
+      throw error;
     }
   };
 
@@ -195,9 +196,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      console.log('=== LOGOUT ===');
+      console.log('Clearing user:', user?.id);
+      
       await supabase.auth.signOut();
       setUser(null);
       await AsyncStorage.removeItem('@user');
+      
+      console.log('✅ Logout complete - user cleared');
     } catch (error) {
       console.error('Logout error:', error);
     }

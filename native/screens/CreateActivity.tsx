@@ -13,8 +13,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import LocationPicker from '../components/LocationPicker';
 
-type ActivityType = 'cycling' | 'climbing' | 'running';
+type ActivityType = 'cycling' | 'climbing' | 'running' | 'social';
 type RoadSurface = 'road' | 'gravel' | 'mtb' | 'track' | 'social';
 type ClimbingType = 'indoor_bouldering' | 'indoor_top_rope' | 'indoor_lead_climbing' | 'outdoor_climbing';
 type RunningTerrain = 'road' | 'trail' | 'track' | 'mixed';
@@ -61,11 +62,17 @@ export default function CreateActivity() {
   const [userClubs, setUserClubs] = useState<any[]>([]);
   
   const [creating, setCreating] = useState(false);
+  
+  // Location coordinates
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   const activityTypes = [
     { id: 'cycling' as ActivityType, name: 'Cycling', icon: '🚴' },
     { id: 'climbing' as ActivityType, name: 'Climbing', icon: '🧗' },
     { id: 'running' as ActivityType, name: 'Running', icon: '🏃' },
+    { id: 'social' as ActivityType, name: 'Social', icon: '🎉' },
   ];
 
   // Fetch user's clubs when component mounts
@@ -112,7 +119,7 @@ export default function CreateActivity() {
 
   const handleCreate = async () => {
     // Validation
-    if (!selectedType || !title || !time || !location || !maxParticipants) {
+    if (!selectedType || !title || !time || !location || !meetupLocation || !maxParticipants) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -178,10 +185,12 @@ export default function CreateActivity() {
       if (selectedType === 'cycling') {
         if (distance) activityData.distance = parseFloat(distance);
         if (elevation) activityData.elevation = parseFloat(elevation);
-        if (pace) activityData.pace = parseFloat(pace);
+        if (pace) {
+          activityData.pace = parseFloat(pace);
+          activityData.pace_unit = 'km/h';
+        }
         activityData.distance_unit = 'km';
         activityData.elevation_unit = 'm';
-        activityData.pace_unit = 'kph';
         activityData.road_surface = roadSurface;
         if (routeLink) activityData.route_link = routeLink;
         if (cafeStop) activityData.cafe_stop = cafeStop;
@@ -192,10 +201,12 @@ export default function CreateActivity() {
       } else if (selectedType === 'running') {
         if (runningDistance) activityData.distance = parseFloat(runningDistance);
         if (runningElevation) activityData.elevation = parseFloat(runningElevation);
-        if (runningPace) activityData.pace = parseFloat(runningPace);
+        if (runningPace) {
+          activityData.pace = parseFloat(runningPace);
+          activityData.pace_unit = 'min/km';
+        }
         activityData.distance_unit = 'km';
         activityData.elevation_unit = 'm';
-        activityData.pace_unit = 'min/km';
         activityData.running_terrain = runningTerrain;
       }
 
@@ -203,6 +214,12 @@ export default function CreateActivity() {
       activityData.club_members_only = clubMembersOnly;
       if (clubMembersOnly && selectedClubs.length > 0) {
         activityData.visible_to_clubs = selectedClubs;
+      }
+
+      // Add location coordinates if set
+      if (latitude !== null && longitude !== null) {
+        activityData.latitude = latitude;
+        activityData.longitude = longitude;
       }
 
       const { error } = await supabase
@@ -242,6 +259,8 @@ export default function CreateActivity() {
               setRunningElevation('');
               setClubMembersOnly(false);
               setSelectedClubs([]);
+              setLatitude(null);
+              setLongitude(null);
               
               // Navigate to Explore
               navigation.navigate('Explore' as never);
@@ -426,21 +445,50 @@ export default function CreateActivity() {
           </>
         )}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Location *"
-          placeholderTextColor="#999"
-          value={location}
-          onChangeText={setLocation}
-        />
+        <View style={styles.locationInputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="General Location / City (e.g., London) *"
+            placeholderTextColor="#999"
+            value={location}
+            onChangeText={setLocation}
+          />
+          <Text style={styles.locationHint}>
+            💡 This helps people find activities in their area
+          </Text>
+        </View>
 
         <TextInput
           style={styles.input}
-          placeholder="Meetup location (optional)"
+          placeholder="Meetup location (e.g., Hyde Park Main Gate) *"
           placeholderTextColor="#999"
           value={meetupLocation}
           onChangeText={setMeetupLocation}
         />
+
+        <TouchableOpacity
+          style={styles.dropPinButton}
+          onPress={() => {
+            if (!meetupLocation) {
+              Alert.alert('Enter Meetup Location First', 'Please enter a meetup location before dropping a pin');
+              return;
+            }
+            if (!location) {
+              Alert.alert('Enter City First', 'Please enter the general location/city first to help center the map');
+              return;
+            }
+            setShowLocationPicker(true);
+          }}
+        >
+          <Text style={styles.dropPinButtonText}>
+            {latitude && longitude ? '✓ Meetup Pin Dropped' : '📍 Drop Pin at Meetup Spot'}
+          </Text>
+          {latitude && longitude && (
+            <Text style={styles.dropPinCoords}>
+              {latitude.toFixed(6)}, {longitude.toFixed(6)}
+            </Text>
+          )}
+        </TouchableOpacity>
 
         <TextInput
           style={styles.input}
@@ -492,7 +540,7 @@ export default function CreateActivity() {
             
             <TextInput
               style={styles.input}
-              placeholder="Pace (kph)"
+              placeholder="Pace (km/h)"
               placeholderTextColor="#999"
               value={pace}
               onChangeText={setPace}
@@ -614,6 +662,15 @@ export default function CreateActivity() {
           </>
         )}
 
+        {selectedType === 'social' && (
+          <>
+            <Text style={styles.sectionTitle}>Social Event Details</Text>
+            <Text style={styles.helpText}>
+              Create a social gathering like coffee meetups, dinners, or casual hangouts
+            </Text>
+          </>
+        )}
+
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Special comments or requirements"
@@ -688,6 +745,18 @@ export default function CreateActivity() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <LocationPicker
+        visible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onLocationSelect={(lat, lng, address) => {
+          setLatitude(lat);
+          setLongitude(lng);
+          Alert.alert('Meetup Pin Dropped!', `Meetup location set at ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        }}
+        initialLocation={location}
+        meetupLocation={meetupLocation}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -910,5 +979,41 @@ const styles = StyleSheet.create({
   clubItemTextSelected: {
     fontWeight: '600',
     color: '#4A7C59',
+  },
+  helpText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  locationInputContainer: {
+    marginBottom: 0,
+  },
+  locationHint: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: -12,
+    marginBottom: 16,
+    marginLeft: 4,
+  },
+  dropPinButton: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 2,
+    borderColor: '#4A7C59',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  dropPinButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4A7C59',
+  },
+  dropPinCoords: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
 });

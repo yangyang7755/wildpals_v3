@@ -1,26 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Alert,
-  ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { supabase } from '../lib/supabase';
+import { VerificationCodeService } from '../services/VerificationCodeService';
 
 export default function EmailVerification() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { email } = route.params as { email: string };
+  const { email, userId } = route.params as { email: string; userId: string };
   
-  const [checking, setChecking] = useState(false);
+  const [code, setCode] = useState(['', '', '', '']);
+  const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [canResend, setCanResend] = useState(false);
   const [countdown, setCountdown] = useState(60);
+  
+  const inputRefs = [
+    useRef<TextInput>(null),
+    useRef<TextInput>(null),
+    useRef<TextInput>(null),
+    useRef<TextInput>(null),
+  ];
 
   useEffect(() => {
+    // Focus first input on mount
+    inputRefs[0].current?.focus();
+    
     // Start countdown timer
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -36,58 +47,92 @@ export default function EmailVerification() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleCheckVerification = async () => {
-    setChecking(true);
-    try {
-      // Refresh the session to check if email is verified
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) throw error;
+  const handleCodeChange = (value: string, index: number) => {
+    // Only allow numbers
+    if (value && !/^\d$/.test(value)) return;
 
-      if (session?.user?.email_confirmed_at) {
+    const newCode = [...code];
+    newCode[index] = value;
+    setCode(newCode);
+
+    // Auto-focus next input
+    if (value && index < 3) {
+      inputRefs[index + 1].current?.focus();
+    }
+
+    // Auto-verify when all 4 digits entered
+    if (index === 3 && value) {
+      const fullCode = newCode.join('');
+      if (fullCode.length === 4) {
+        handleVerify(fullCode);
+      }
+    }
+  };
+
+  const handleKeyPress = (e: any, index: number) => {
+    // Handle backspace
+    if (e.nativeEvent.key === 'Backspace' && !code[index] && index > 0) {
+      inputRefs[index - 1].current?.focus();
+    }
+  };
+
+  const handleVerify = async (fullCode?: string) => {
+    const verificationCode = fullCode || code.join('');
+    
+    if (verificationCode.length !== 4) {
+      Alert.alert('Invalid Code', 'Please enter the 4-digit code');
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const result = await VerificationCodeService.verifyCode(userId, verificationCode);
+
+      if (result.success) {
+        // Email is now verified - need to sign the user in to create a session
+        // The user needs to enter their password to sign in
         Alert.alert(
-          'Success!',
-          'Your email has been verified',
+          'Email Verified!',
+          'Your email has been verified. Please log in to continue.',
           [
             {
-              text: 'Continue',
-              onPress: () => navigation.navigate('ProfileSetup' as never),
+              text: 'Go to Login',
+              onPress: () => navigation.navigate('Login' as never),
             },
           ]
         );
       } else {
         Alert.alert(
-          'Not Verified Yet',
-          'Please check your email and click the verification link. It may take a few moments to arrive.',
-          [{ text: 'OK' }]
+          'Invalid Code',
+          'The code you entered is incorrect. Please try again or request a new code.'
         );
+        setCode(['', '', '', '']);
+        inputRefs[0].current?.focus();
       }
-    } catch (error) {
-      console.error('Error checking verification:', error);
-      Alert.alert('Error', 'Failed to check verification status');
+    } catch (error: any) {
+      console.error('Error verifying code:', error);
+      Alert.alert('Error', 'Failed to verify code. Please try again.');
     } finally {
-      setChecking(false);
+      setVerifying(false);
     }
   };
 
-  const handleResendEmail = async () => {
+  const handleResendCode = async () => {
     setResending(true);
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-      });
-
-      if (error) throw error;
+      const newCode = await VerificationCodeService.resendCode(userId, email);
+      await VerificationCodeService.sendVerificationEmail(email, newCode, '');
 
       Alert.alert(
-        'Email Sent!',
-        'A new verification email has been sent to your inbox'
+        'Code Sent!',
+        'A new verification code has been sent to your email'
       );
       
       // Reset countdown
       setCanResend(false);
       setCountdown(60);
+      setCode(['', '', '', '']);
+      inputRefs[0].current?.focus();
       
       const timer = setInterval(() => {
         setCountdown((prev) => {
@@ -100,8 +145,8 @@ export default function EmailVerification() {
         });
       }, 1000);
     } catch (error: any) {
-      console.error('Error resending email:', error);
-      Alert.alert('Error', error.message || 'Failed to resend verification email');
+      console.error('Error resending code:', error);
+      Alert.alert('Error', 'Failed to resend verification code');
     } finally {
       setResending(false);
     }
@@ -111,49 +156,61 @@ export default function EmailVerification() {
     <View style={styles.container}>
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Text style={styles.icon}>📧</Text>
+          <Text style={styles.icon}>🔐</Text>
         </View>
 
-        <Text style={styles.title}>Verify Your Email</Text>
+        <Text style={styles.title}>Enter Verification Code</Text>
         <Text style={styles.subtitle}>
-          We've sent a verification link to:
+          We've sent a 4-digit code to:
         </Text>
         <Text style={styles.email}>{email}</Text>
 
-        <View style={styles.instructions}>
-          <Text style={styles.instructionTitle}>Next Steps:</Text>
-          <Text style={styles.instructionText}>
-            1. Check your email inbox (and spam folder)
-          </Text>
-          <Text style={styles.instructionText}>
-            2. Click the verification link in the email
-          </Text>
-          <Text style={styles.instructionText}>
-            3. Return here and tap "I've Verified My Email"
-          </Text>
+        <View style={styles.codeInputContainer}>
+          {code.map((digit, index) => (
+            <TextInput
+              key={index}
+              ref={inputRefs[index]}
+              style={[
+                styles.codeInput,
+                digit && styles.codeInputFilled,
+              ]}
+              value={digit}
+              onChangeText={(value) => handleCodeChange(value, index)}
+              onKeyPress={(e) => handleKeyPress(e, index)}
+              keyboardType="number-pad"
+              maxLength={1}
+              selectTextOnFocus
+              editable={!verifying}
+            />
+          ))}
         </View>
 
+        {verifying && (
+          <Text style={styles.verifyingText}>Verifying...</Text>
+        )}
+
         <TouchableOpacity
-          style={[styles.verifyButton, checking && styles.buttonDisabled]}
-          onPress={handleCheckVerification}
-          disabled={checking}
+          style={[
+            styles.verifyButton,
+            (code.join('').length !== 4 || verifying) && styles.buttonDisabled,
+          ]}
+          onPress={() => handleVerify()}
+          disabled={code.join('').length !== 4 || verifying}
         >
-          {checking ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.verifyButtonText}>I've Verified My Email</Text>
-          )}
+          <Text style={styles.verifyButtonText}>
+            {verifying ? 'Verifying...' : 'Verify Email'}
+          </Text>
         </TouchableOpacity>
 
         <View style={styles.resendContainer}>
-          <Text style={styles.resendText}>Didn't receive the email?</Text>
+          <Text style={styles.resendText}>Didn't receive the code?</Text>
           {canResend ? (
             <TouchableOpacity
-              onPress={handleResendEmail}
+              onPress={handleResendCode}
               disabled={resending}
             >
               <Text style={styles.resendLink}>
-                {resending ? 'Sending...' : 'Resend Email'}
+                {resending ? 'Sending...' : 'Resend Code'}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -214,27 +271,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#4A7C59',
-    marginBottom: 32,
+    marginBottom: 40,
     textAlign: 'center',
   },
-  instructions: {
-    width: '100%',
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 20,
+  codeInputContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
     marginBottom: 32,
   },
-  instructionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  codeInput: {
+    width: 60,
+    height: 70,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
     color: '#000',
-    marginBottom: 12,
   },
-  instructionText: {
+  codeInputFilled: {
+    borderColor: '#4A7C59',
+    backgroundColor: '#F0F9F4',
+  },
+  verifyingText: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-    lineHeight: 20,
+    color: '#4A7C59',
+    marginBottom: 16,
   },
   verifyButton: {
     backgroundColor: '#4A7C59',

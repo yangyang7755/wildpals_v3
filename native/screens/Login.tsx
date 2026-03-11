@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function Login() {
   const navigation = useNavigation();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,7 +30,26 @@ export default function Login() {
     try {
       const success = await login(email, password);
       if (success) {
-        navigation.navigate('MainTabs' as never);
+        // After login, the AuthContext will have loaded the user profile
+        // We need to use a small delay to let the state update propagate
+        setTimeout(async () => {
+          // Re-fetch the latest auth context
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('gender, location, bio')
+            .eq('id', authUser?.id)
+            .single();
+
+          // Check if profile is complete (has gender and location)
+          const hasCompletedProfile = !!(profile?.gender && profile?.location);
+          
+          if (hasCompletedProfile) {
+            navigation.navigate('MainTabs' as never);
+          } else {
+            navigation.navigate('ProfileSetup' as never);
+          }
+        }, 200);
       } else {
         Alert.alert('Error', 'Invalid email or password');
       }
@@ -114,11 +134,10 @@ export default function Login() {
             <Text style={styles.loginButtonText}>Log in</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.demoButton} onPress={fillDemoAccount}>
-            <Text style={styles.demoButtonText}>🎯 Fill with Demo Account</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.forgotPassword}>
+          <TouchableOpacity
+            style={styles.forgotPassword}
+            onPress={() => navigation.navigate('ForgotPassword' as never)}
+          >
             <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
           </TouchableOpacity>
 

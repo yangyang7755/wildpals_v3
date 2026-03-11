@@ -52,6 +52,7 @@ interface Participant {
   user_id: string;
   profiles: {
     full_name: string;
+    profile_picture_url?: string;
   };
 }
 
@@ -99,7 +100,8 @@ export default function ActivityDetail() {
           id,
           user_id: requester_id,
           profiles:requester_id (
-            full_name
+            full_name,
+            profile_picture_url
           )
         `)
         .eq('activity_id', activityId)
@@ -419,21 +421,28 @@ export default function ActivityDetail() {
             {isFull && ' (Full)'}
           </Text>
           
-          {participants.length > 0 && (
-            <View style={styles.participantsList}>
+          {participants.length > 0 ? (
+            <View style={styles.participantBubbles}>
               {participants.map((participant) => (
                 <TouchableOpacity
                   key={participant.id}
-                  style={styles.participantChip}
+                  style={styles.participantBubble}
                   onPress={() => navigation.navigate('UserProfile' as never, { userId: participant.user_id } as never)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.participantName}>
+                  <View style={styles.participantAvatar}>
+                    <Text style={styles.participantInitial}>
+                      {participant.profiles?.full_name?.charAt(0).toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                  <Text style={styles.participantBubbleName} numberOfLines={1}>
                     {participant.profiles?.full_name || 'User'}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+          ) : (
+            <Text style={styles.noParticipantsText}>No participants yet</Text>
           )}
         </View>
 
@@ -516,8 +525,13 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Show pending status - now clickable to cancel */}
-        {!isOrganizer && userStatus === 'pending' && (
+        {/* Show Activity Complete when full */}
+        {!isOrganizer && isFull && !userStatus && (
+          <View style={[styles.statusBadge, styles.completeBadge]}>
+            <Text style={[styles.statusText, styles.completeText]}>Activity Complete</Text>
+            <Text style={[styles.statusSubtext, styles.completeSubtext]}>Max participants reached</Text>
+          </View>
+        )}
           <TouchableOpacity
             style={styles.statusBadge}
             onPress={handleCancelRequest}
@@ -538,10 +552,11 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Show full status */}
+        {/* Show Activity Complete when full */}
         {!isOrganizer && isFull && !userStatus && (
-          <View style={[styles.statusBadge, styles.fullBadge]}>
-            <Text style={styles.statusText}>Activity Full</Text>
+          <View style={[styles.statusBadge, styles.completeBadge]}>
+            <Text style={[styles.statusText, styles.completeText]}>Activity Complete</Text>
+            <Text style={[styles.statusSubtext, styles.completeSubtext]}>Max participants reached</Text>
           </View>
         )}
       </View>
@@ -774,6 +789,48 @@ const styles = StyleSheet.create({
   participantCountFull: {
     color: '#FF3B30',
   },
+  participantBubbles: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 8,
+  },
+  participantBubble: {
+    alignItems: 'center',
+    width: 70,
+  },
+  participantAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#4A7C59',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+    borderWidth: 3,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  participantInitial: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  participantBubbleName: {
+    fontSize: 12,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  noParticipantsText: {
+    fontSize: 14,
+    color: '#999',
+    fontStyle: 'italic',
+  },
   participantsList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -848,6 +905,15 @@ const styles = StyleSheet.create({
   },
   fullBadge: {
     backgroundColor: '#FFEBEE',
+  },
+  completeBadge: {
+    backgroundColor: '#E0E0E0',
+  },
+  completeText: {
+    color: '#666',
+  },
+  completeSubtext: {
+    color: '#666',
   },
   joinedBadge: {
     backgroundColor: '#E8F5E9',

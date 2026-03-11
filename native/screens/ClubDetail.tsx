@@ -75,6 +75,7 @@ export default function ClubDetail() {
   const [joinMessage, setJoinMessage] = useState('');
   const [membershipStatus, setMembershipStatus] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   useEffect(() => {
     loadClubData();
@@ -255,6 +256,41 @@ export default function ClubDetail() {
     }
   };
 
+  const handleCancelRequest = async () => {
+    if (!user || !club) return;
+
+    Alert.alert(
+      'Cancel Request',
+      'Are you sure you want to cancel your join request?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('club_members')
+                .delete()
+                .eq('club_id', club.id)
+                .eq('user_id', user.id)
+                .eq('status', 'pending');
+
+              if (error) throw error;
+
+              Alert.alert('Request Cancelled', 'Your join request has been cancelled');
+              setMembershipStatus(null);
+              loadClubData();
+            } catch (error: any) {
+              console.error('Error cancelling request:', error);
+              Alert.alert('Error', 'Failed to cancel request');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -318,9 +354,13 @@ export default function ClubDetail() {
               </Text>
             </View>
           ) : membershipStatus === 'pending' ? (
-            <View style={[styles.memberBadge, styles.pendingBadge]}>
-              <Text style={styles.pendingBadgeText}>⏳ Pending</Text>
-            </View>
+            <TouchableOpacity 
+              style={[styles.joinButton, styles.pendingButton]} 
+              onPress={handleCancelRequest}
+            >
+              <Text style={styles.pendingButtonText}>⏳ Request Pending</Text>
+              <Text style={styles.pendingButtonSubtext}>Tap to cancel</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest}>
               <Text style={styles.joinButtonText}>
@@ -425,14 +465,41 @@ export default function ClubDetail() {
         </ScrollView>
       ) : selectedTab === 'members' ? (
         <ScrollView style={styles.tabContent}>
-          {members.length === 0 ? (
+          {/* Search bar for members */}
+          <View style={styles.searchContainer}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search members..."
+              placeholderTextColor="#999"
+              value={memberSearchQuery}
+              onChangeText={setMemberSearchQuery}
+            />
+            {memberSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setMemberSearchQuery('')}>
+                <Text style={styles.clearIcon}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {members.filter(member => 
+            member.profiles?.full_name?.toLowerCase().includes(memberSearchQuery.toLowerCase())
+          ).length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>👥</Text>
-              <Text style={styles.emptyText}>No members yet</Text>
+              <Text style={styles.emptyIcon}>
+                {memberSearchQuery ? '🔍' : '👥'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {memberSearchQuery ? 'No members found' : 'No members yet'}
+              </Text>
             </View>
           ) : (
             <View style={styles.membersGrid}>
-              {members.map((member) => (
+              {members
+                .filter(member => 
+                  member.profiles?.full_name?.toLowerCase().includes(memberSearchQuery.toLowerCase())
+                )
+                .map((member) => (
                 <TouchableOpacity
                   key={member.id}
                   style={styles.memberCard}
@@ -656,10 +723,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
   },
+  pendingButton: {
+    backgroundColor: '#FFF3E0',
+    borderWidth: 2,
+    borderColor: '#FF9800',
+  },
   joinButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  pendingButtonText: {
+    color: '#FF9800',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  pendingButtonSubtext: {
+    color: '#FF9800',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+    opacity: 0.8,
   },
   memberBadge: {
     backgroundColor: '#E8F5E9',
@@ -706,6 +791,29 @@ const styles = StyleSheet.create({
   tabContent: {
     flex: 1,
     padding: 20,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  searchIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+  },
+  clearIcon: {
+    fontSize: 20,
+    color: '#999',
+    paddingHorizontal: 8,
   },
   emptyState: {
     alignItems: 'center',

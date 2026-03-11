@@ -7,6 +7,12 @@
 
 **Important:** This test account is pre-configured with sample data including clubs, activities, and connections to demonstrate full app functionality.
 
+**Note on Email Verification:**
+- Email verification is enabled in the app
+- The test account above is pre-verified for your convenience
+- New users will receive verification emails (may take a few minutes to arrive)
+- Verification emails may go to spam folder initially
+
 ---
 
 ## App Overview

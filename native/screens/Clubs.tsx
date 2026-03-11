@@ -33,7 +33,8 @@ export default function Clubs() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSportType, setSelectedSportType] = useState<'all' | 'cycling' | 'climbing' | 'running'>('all');
-  const [selectedLocation, setSelectedLocation] = useState<'all' | 'London' | 'Oxford' | 'Boston'>('all');
+  const [selectedLocation, setSelectedLocation] = useState<string>('all');
+  const [userCity, setUserCity] = useState<string | null>(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   // Color palette for club avatars
@@ -61,8 +62,28 @@ export default function Clubs() {
   };
 
   useEffect(() => {
+    loadUserCity();
     loadClubs();
   }, []);
+
+  const loadUserCity = async () => {
+    try {
+      if (user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('location')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.location) {
+          setUserCity(profile.location);
+          setSelectedLocation(profile.location); // Auto-filter by user's city
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user city:', error);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -210,7 +231,45 @@ export default function Clubs() {
 
       {showLocationPicker && (
         <View style={styles.locationPicker}>
-          {['all', 'London', 'Oxford', 'Boston'].map((location) => (
+          <TouchableOpacity
+            style={[
+              styles.locationOption,
+              selectedLocation === 'all' && styles.locationOptionActive
+            ]}
+            onPress={() => {
+              setSelectedLocation('all');
+              setShowLocationPicker(false);
+            }}
+          >
+            <Text style={[
+              styles.locationOptionText,
+              selectedLocation === 'all' && styles.locationOptionTextActive
+            ]}>
+              All Locations
+            </Text>
+          </TouchableOpacity>
+          
+          {userCity && (
+            <TouchableOpacity
+              style={[
+                styles.locationOption,
+                selectedLocation === userCity && styles.locationOptionActive
+              ]}
+              onPress={() => {
+                setSelectedLocation(userCity);
+                setShowLocationPicker(false);
+              }}
+            >
+              <Text style={[
+                styles.locationOptionText,
+                selectedLocation === userCity && styles.locationOptionTextActive
+              ]}>
+                {userCity} (My City)
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {['London', 'Oxford', 'Boston'].filter(city => city !== userCity).map((location) => (
             <TouchableOpacity
               key={location}
               style={[
@@ -218,7 +277,7 @@ export default function Clubs() {
                 selectedLocation === location && styles.locationOptionActive
               ]}
               onPress={() => {
-                setSelectedLocation(location as any);
+                setSelectedLocation(location);
                 setShowLocationPicker(false);
               }}
             >
@@ -226,7 +285,7 @@ export default function Clubs() {
                 styles.locationOptionText,
                 selectedLocation === location && styles.locationOptionTextActive
               ]}>
-                {location === 'all' ? 'All Locations' : location}
+                {location}
               </Text>
             </TouchableOpacity>
           ))}

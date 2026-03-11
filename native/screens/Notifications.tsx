@@ -63,6 +63,10 @@ export default function NotificationsImproved() {
   const loadData = async () => {
     if (!user) return;
 
+    console.log('=== NOTIFICATIONS: Loading data for user ===');
+    console.log('User ID:', user.id);
+    console.log('User Email:', user.email);
+
     try {
       setLoading(true);
 
@@ -79,35 +83,51 @@ export default function NotificationsImproved() {
       setNotifications(notifData || []);
 
       // Load join requests (for organizers) - these stay visible
-      const { data: requestData, error: requestError } = await supabase
-        .from('join_requests')
-        .select(`
-          id,
-          message,
-          created_at,
-          status,
-          requester:profiles!join_requests_requester_id_fkey(id, full_name),
-          activity:activities(id, title, date, time, type)
-        `)
-        .eq('activities.organizer_id', user.id)
-        .order('created_at', { ascending: false });
+      // First, get all activities organized by this user
+      const { data: userActivities, error: activitiesError } = await supabase
+        .from('activities')
+        .select('id')
+        .eq('organizer_id', user.id);
 
-      if (requestError) throw requestError;
+      if (activitiesError) throw activitiesError;
 
-      const transformedRequests = (requestData || [])
-        .map((item: any) => ({
-          id: item.id,
-          message: item.message,
-          created_at: item.created_at,
-          status: item.status,
-          requester: Array.isArray(item.requester) && item.requester.length > 0 
-            ? item.requester[0] 
-            : item.requester,
-          activity: Array.isArray(item.activity) && item.activity.length > 0 
-            ? item.activity[0] 
-            : item.activity,
-        }))
-        .filter((item: any) => item.requester && item.activity);
+      const activityIds = (userActivities || []).map(a => a.id);
+
+      // Then get join requests for those activities
+      let transformedRequests: JoinRequest[] = [];
+      
+      if (activityIds.length > 0) {
+        const { data: requestData, error: requestError } = await supabase
+          .from('join_requests')
+          .select(`
+            id,
+            message,
+            created_at,
+            status,
+            activity_id,
+            requester:profiles!join_requests_requester_id_fkey(id, full_name),
+            activity:activities(id, title, date, time, type, organizer_id)
+          `)
+          .in('activity_id', activityIds)
+          .order('created_at', { ascending: false });
+
+        if (requestError) throw requestError;
+
+        transformedRequests = (requestData || [])
+          .map((item: any) => ({
+            id: item.id,
+            message: item.message,
+            created_at: item.created_at,
+            status: item.status,
+            requester: Array.isArray(item.requester) && item.requester.length > 0 
+              ? item.requester[0] 
+              : item.requester,
+            activity: Array.isArray(item.activity) && item.activity.length > 0 
+              ? item.activity[0] 
+              : item.activity,
+          }))
+          .filter((item: any) => item.requester && item.activity);
+      }
 
       setJoinRequests(transformedRequests);
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { VerificationCodeService } from '../services/VerificationCodeService';
 
 export default function SignUp() {
   const navigation = useNavigation();
@@ -46,34 +48,32 @@ export default function SignUp() {
       return false;
     }
 
-    if (!dateOfBirth.trim()) {
-      Alert.alert('Error', 'Please enter your date of birth');
-      return false;
-    }
+    // Date of birth is now optional - only validate if provided
+    if (dateOfBirth.trim()) {
+      // Validate date format (YYYY-MM-DD)
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(dateOfBirth)) {
+        Alert.alert('Error', 'Please enter date in format: YYYY-MM-DD (e.g., 2000-01-15)');
+        return false;
+      }
 
-    // Validate date format (YYYY-MM-DD)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(dateOfBirth)) {
-      Alert.alert('Error', 'Please enter date in format: YYYY-MM-DD (e.g., 2000-01-15)');
-      return false;
-    }
+      // Validate date is valid
+      const birthDate = new Date(dateOfBirth);
+      if (isNaN(birthDate.getTime())) {
+        Alert.alert('Error', 'Please enter a valid date');
+        return false;
+      }
 
-    // Validate date is valid
-    const birthDate = new Date(dateOfBirth);
-    if (isNaN(birthDate.getTime())) {
-      Alert.alert('Error', 'Please enter a valid date');
-      return false;
-    }
-
-    // Check if user is at least 18 years old
-    const age = calculateAge(dateOfBirth);
-    if (age < 18) {
-      Alert.alert(
-        'Age Requirement',
-        'You must be at least 18 years old to use Wildpals.',
-        [{ text: 'OK' }]
-      );
-      return false;
+      // Check if user is at least 18 years old
+      const age = calculateAge(dateOfBirth);
+      if (age < 18) {
+        Alert.alert(
+          'Age Requirement',
+          'You must be at least 18 years old to use Wildpals.',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
     }
 
     if (!email.trim()) {
@@ -110,11 +110,39 @@ export default function SignUp() {
 
     setLoading(true);
     try {
-      const success = await signup(email, password, fullName, dateOfBirth);
+      console.log('Starting signup process...');
+      const result = await signup(email, password, fullName, dateOfBirth);
       
-      if (success) {
-        // Navigate to email verification screen
-        (navigation as any).navigate('EmailVerification', { email });
+      if (result.success && result.userId) {
+        console.log('Signup successful, user ID:', result.userId);
+        
+        try {
+          // Generate and send verification code
+          const code = await VerificationCodeService.createVerificationCode(result.userId, result.email || email);
+          console.log('Verification code created:', code);
+          
+          await VerificationCodeService.sendVerificationEmail(result.email || email, code, fullName);
+          console.log('Verification email sent');
+          
+          // Navigate to email verification screen with userId
+          console.log('Navigating to EmailVerification...');
+          (navigation as any).navigate('EmailVerification', { 
+            email: result.email || email,
+            userId: result.userId 
+          });
+        } catch (codeError: any) {
+          console.error('Error with verification code:', codeError);
+          Alert.alert(
+            'Account Created',
+            'Your account was created but we had trouble sending the verification code. Please contact support.',
+            [
+              {
+                text: 'OK',
+                onPress: () => (navigation as any).navigate('Login'),
+              },
+            ]
+          );
+        }
       }
     } catch (error: any) {
       console.error('SignUp error:', error);
@@ -195,7 +223,7 @@ export default function SignUp() {
 
             <TextInput
               style={styles.input}
-              placeholder="Date of Birth (YYYY-MM-DD)"
+              placeholder="Date of Birth (Optional, YYYY-MM-DD)"
               placeholderTextColor="#999"
               value={dateOfBirth}
               onChangeText={setDateOfBirth}
