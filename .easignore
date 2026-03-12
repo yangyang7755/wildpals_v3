@@ -1,0 +1,4 @@
+# Force EAS to rebuild by ignoring cache
+node_modules/
+.expo/
+.git/
