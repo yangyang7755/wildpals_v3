@@ -71,26 +71,10 @@ export default function Settings() {
 
       if (profileError) throw profileError;
 
-      // Step 2: Delete user from Supabase Auth
-      // This permanently removes the authentication record
-      const { error: authError } = await supabase.auth.admin.deleteUser(user.id);
-      
-      // If admin.deleteUser fails (requires service role), try regular delete
-      if (authError) {
-        console.log('Admin delete failed, trying user delete:', authError);
-        
-        // Alternative: Use the user's own session to delete their account
-        const { error: userDeleteError } = await supabase.rpc('delete_user');
-        
-        if (userDeleteError) {
-          console.error('User delete also failed:', userDeleteError);
-          // Continue anyway - profile is deleted, auth can be cleaned up manually
-        }
-      }
-
-      // Step 3: Sign out and clear ALL local data
-      await supabase.auth.signOut();
-      await AsyncStorage.clear(); // Clear all AsyncStorage data
+      // Step 2: Sign out via Clerk (profile data already deleted above)
+      // Clerk user can be deleted from the Clerk dashboard if needed
+      await logout();
+      await AsyncStorage.clear();
       
       // Show success message and navigate to login
       Alert.alert(

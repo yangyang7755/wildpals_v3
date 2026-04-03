@@ -13,10 +13,12 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useUser as useClerkUser } from '@clerk/clerk-expo';
 
 export default function ProfileSetup() {
   const navigation = useNavigation();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { user: clerkUser } = useClerkUser();
   
   const [gender, setGender] = useState('');
   const [city, setCity] = useState('');
@@ -46,16 +48,12 @@ export default function ProfileSetup() {
 
     setLoading(true);
     try {
-      // Get user's date of birth from auth metadata
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const dateOfBirth = authUser?.user_metadata?.date_of_birth;
-      
+      // Date of birth is no longer stored in auth metadata with Clerk
+      // It can be added later in profile editing
+      const dateOfBirth = null;
       let age = null;
-      if (dateOfBirth) {
-        age = calculateAge(dateOfBirth);
-      }
 
-      const { error } = await supabase
+      let query = supabase
         .from('profiles')
         .update({
           age: age,
@@ -63,10 +61,22 @@ export default function ProfileSetup() {
           location: city,
           bio: bio || null,
           date_of_birth: dateOfBirth || null,
-        })
-        .eq('id', user?.id);
+        } as any);
+
+      // Use user.id if available, otherwise fall back to clerk_id
+      if (user?.id) {
+        query = query.eq('id', user.id);
+      } else if (clerkUser?.id) {
+        query = query.eq('clerk_id', clerkUser.id);
+      } else {
+        throw new Error('No user ID available');
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
+
+      await refreshUser();
 
       Alert.alert('Success!', 'Your profile is ready', [
         {

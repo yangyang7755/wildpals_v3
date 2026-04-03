@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -20,6 +22,10 @@ interface Activity {
   type: string;
   date: string;
   time: string;
+  end_date?: string;
+  end_time?: string;
+  activity_type?: string;
+  recurrence_day_of_week?: number;
   location: string;
   meetup_location: string;
   max_participants: number;
@@ -27,13 +33,19 @@ interface Activity {
   special_comments: string;
   distance?: number;
   elevation?: number;
-  pace?: number;
+  pace?: string | number;
+  pace_unit?: string;
+  distance_unit?: string;
+  elevation_unit?: string;
   road_surface?: string;
   route_link?: string;
   cafe_stop?: string;
   climbing_level?: string;
   climbing_type?: string;
   gear_required?: string;
+  running_terrain?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface Participant {
@@ -207,9 +219,35 @@ export default function ActivityManagement() {
     if (!activity) return;
 
     try {
+      // Build clean update object, only include changed fields
+      const updateData: any = {};
+      const fields = [
+        'title', 'date', 'time', 'end_date', 'end_time', 'location',
+        'meetup_location', 'max_participants', 'special_comments',
+        'road_surface', 'route_link', 'cafe_stop', 'climbing_level',
+        'climbing_type', 'gear_required', 'running_terrain', 'pace_unit',
+      ];
+      for (const f of fields) {
+        if ((editedActivity as any)[f] !== undefined) {
+          updateData[f] = (editedActivity as any)[f];
+        }
+      }
+      // Handle numeric fields
+      if (editedActivity.max_participants !== undefined) {
+        updateData.max_participants = editedActivity.max_participants;
+      }
+      // Handle distance/elevation as numbers
+      const dist = String(editedActivity.distance ?? '');
+      updateData.distance = dist ? (parseFloat(dist) || null) : null;
+      const elev = String(editedActivity.elevation ?? '');
+      updateData.elevation = elev ? (parseFloat(elev) || null) : null;
+      // Handle pace as text (supports ranges like "28-30")
+      const paceVal = String(editedActivity.pace ?? '').trim();
+      updateData.pace = paceVal || null;
+
       const { error } = await supabase
         .from('activities')
-        .update(editedActivity)
+        .update(updateData)
         .eq('id', activityId);
 
       if (error) throw error;
@@ -391,7 +429,10 @@ export default function ActivityManagement() {
         animationType="slide"
         onRequestClose={() => setShowEditModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowEditModal(false)}>
               <Text style={styles.modalClose}>✕</Text>
@@ -402,7 +443,10 @@ export default function ActivityManagement() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} contentContainerStyle={{ paddingBottom: 60 }}>
+            {/* Common Fields */}
+            <Text style={styles.editSectionTitle}>General</Text>
+
             <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
@@ -410,27 +454,68 @@ export default function ActivityManagement() {
               onChangeText={(text) => setEditedActivity({ ...editedActivity, title: text })}
             />
 
-            <Text style={styles.label}>Date</Text>
-            <TextInput
-              style={styles.input}
-              value={editedActivity.date}
-              onChangeText={(text) => setEditedActivity({ ...editedActivity, date: text })}
-              placeholder="YYYY-MM-DD"
-            />
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Date</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.date}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, date: text })}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#999"
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.label}>Time</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.time}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, time: text })}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#999"
+                />
+              </View>
+            </View>
 
-            <Text style={styles.label}>Time</Text>
-            <TextInput
-              style={styles.input}
-              value={editedActivity.time}
-              onChangeText={(text) => setEditedActivity({ ...editedActivity, time: text })}
-              placeholder="HH:MM"
-            />
+            {activity?.activity_type === 'multi_day' && (
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>End Date</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editedActivity.end_date}
+                    onChangeText={(text) => setEditedActivity({ ...editedActivity, end_date: text })}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.label}>End Time</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editedActivity.end_time}
+                    onChangeText={(text) => setEditedActivity({ ...editedActivity, end_time: text })}
+                    placeholder="HH:MM"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
+            )}
 
-            <Text style={styles.label}>Location</Text>
+            <Text style={styles.label}>Location / City</Text>
             <TextInput
               style={styles.input}
               value={editedActivity.location}
               onChangeText={(text) => setEditedActivity({ ...editedActivity, location: text })}
+            />
+
+            <Text style={styles.label}>Meetup Location</Text>
+            <TextInput
+              style={styles.input}
+              value={editedActivity.meetup_location}
+              onChangeText={(text) => setEditedActivity({ ...editedActivity, meetup_location: text })}
+              placeholder="e.g., Hyde Park Main Gate"
+              placeholderTextColor="#999"
             />
 
             <Text style={styles.label}>Max Participants</Text>
@@ -438,9 +523,216 @@ export default function ActivityManagement() {
               style={styles.input}
               value={String(editedActivity.max_participants || '')}
               onChangeText={(text) => setEditedActivity({ ...editedActivity, max_participants: parseInt(text) || 0 })}
-              keyboardType="numeric"
+              keyboardType="number-pad"
             />
 
+            {/* Cycling Fields */}
+            {activity?.type === 'cycling' && (
+              <>
+                <Text style={styles.editSectionTitle}>Cycling Details</Text>
+
+                <Text style={styles.label}>Road Surface</Text>
+                <View style={styles.chipContainer}>
+                  {['road', 'gravel', 'mtb', 'track', 'social'].map((surface) => (
+                    <TouchableOpacity
+                      key={surface}
+                      style={[styles.chip, editedActivity.road_surface === surface && styles.chipActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, road_surface: surface })}
+                    >
+                      <Text style={[styles.chipText, editedActivity.road_surface === surface && styles.chipTextActive]}>
+                        {surface.charAt(0).toUpperCase() + surface.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Distance (km)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(editedActivity.distance ?? '')}
+                      onChangeText={(text) => setEditedActivity({ ...editedActivity, distance: parseFloat(text) || undefined })}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.label}>Elevation (m)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(editedActivity.elevation ?? '')}
+                      onChangeText={(text) => setEditedActivity({ ...editedActivity, elevation: parseFloat(text) || undefined })}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                </View>
+
+                <Text style={styles.label}>Pace</Text>
+                <View style={styles.row}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={String(editedActivity.pace ?? '')}
+                    onChangeText={(text) => setEditedActivity({ ...editedActivity, pace: text })}
+                    placeholder="e.g. 28 or 28-30"
+                    placeholderTextColor="#999"
+                  />
+                  <View style={styles.unitToggle}>
+                    <TouchableOpacity
+                      style={[styles.unitOption, (editedActivity.pace_unit || 'km/h') === 'km/h' && styles.unitOptionActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, pace_unit: 'km/h' })}
+                    >
+                      <Text style={[styles.unitOptionText, (editedActivity.pace_unit || 'km/h') === 'km/h' && styles.unitOptionTextActive]}>km/h</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitOption, editedActivity.pace_unit === 'mph' && styles.unitOptionActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, pace_unit: 'mph' })}
+                    >
+                      <Text style={[styles.unitOptionText, editedActivity.pace_unit === 'mph' && styles.unitOptionTextActive]}>mph</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={styles.label}>Route Link</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.route_link || ''}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, route_link: text })}
+                  placeholder="Strava, Komoot link"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+
+                <Text style={styles.label}>Cafe Stop</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.cafe_stop || ''}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, cafe_stop: text })}
+                  placeholder="Optional"
+                  placeholderTextColor="#999"
+                />
+              </>
+            )}
+
+            {/* Climbing Fields */}
+            {activity?.type === 'climbing' && (
+              <>
+                <Text style={styles.editSectionTitle}>Climbing Details</Text>
+
+                <Text style={styles.label}>Climbing Type</Text>
+                <View style={styles.chipContainer}>
+                  {['indoor_bouldering', 'indoor_top_rope', 'indoor_lead_climbing', 'outdoor_climbing'].map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.chip, editedActivity.climbing_type === type && styles.chipActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, climbing_type: type })}
+                    >
+                      <Text style={[styles.chipText, editedActivity.climbing_type === type && styles.chipTextActive]}>
+                        {type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.label}>Climbing Level</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.climbing_level || ''}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, climbing_level: text })}
+                  placeholder="e.g., 5.8-5.10"
+                  placeholderTextColor="#999"
+                />
+
+                <Text style={styles.label}>Gear Required</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.gear_required || ''}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, gear_required: text })}
+                  placeholder="Optional"
+                  placeholderTextColor="#999"
+                />
+              </>
+            )}
+
+            {/* Running Fields */}
+            {activity?.type === 'running' && (
+              <>
+                <Text style={styles.editSectionTitle}>Running Details</Text>
+
+                <Text style={styles.label}>Terrain</Text>
+                <View style={styles.chipContainer}>
+                  {['road', 'trail', 'track', 'mixed'].map((terrain) => (
+                    <TouchableOpacity
+                      key={terrain}
+                      style={[styles.chip, editedActivity.running_terrain === terrain && styles.chipActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, running_terrain: terrain })}
+                    >
+                      <Text style={[styles.chipText, editedActivity.running_terrain === terrain && styles.chipTextActive]}>
+                        {terrain.charAt(0).toUpperCase() + terrain.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Distance (km)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(editedActivity.distance ?? '')}
+                      onChangeText={(text) => setEditedActivity({ ...editedActivity, distance: parseFloat(text) || undefined })}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.label}>Elevation (m)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(editedActivity.elevation ?? '')}
+                      onChangeText={(text) => setEditedActivity({ ...editedActivity, elevation: parseFloat(text) || undefined })}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                </View>
+
+                <Text style={styles.label}>Pace</Text>
+                <View style={styles.row}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    value={String(editedActivity.pace ?? '')}
+                    onChangeText={(text) => setEditedActivity({ ...editedActivity, pace: text })}
+                    placeholder="e.g. 5:30 or 5:00-5:30"
+                    placeholderTextColor="#999"
+                  />
+                  <View style={styles.unitToggle}>
+                    <TouchableOpacity
+                      style={[styles.unitOption, (editedActivity.pace_unit || 'min/km') === 'min/km' && styles.unitOptionActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, pace_unit: 'min/km' })}
+                    >
+                      <Text style={[styles.unitOptionText, (editedActivity.pace_unit || 'min/km') === 'min/km' && styles.unitOptionTextActive]}>min/km</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitOption, editedActivity.pace_unit === 'min/mi' && styles.unitOptionActive]}
+                      onPress={() => setEditedActivity({ ...editedActivity, pace_unit: 'min/mi' })}
+                    >
+                      <Text style={[styles.unitOptionText, editedActivity.pace_unit === 'min/mi' && styles.unitOptionTextActive]}>min/mi</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <Text style={styles.label}>Route Link</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editedActivity.route_link || ''}
+                  onChangeText={(text) => setEditedActivity({ ...editedActivity, route_link: text })}
+                  placeholder="Strava, Komoot link"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </>
+            )}
+
+            {/* Special Comments - always shown */}
+            <Text style={styles.editSectionTitle}>Additional</Text>
             <Text style={styles.label}>Special Comments</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -448,9 +740,11 @@ export default function ActivityManagement() {
               onChangeText={(text) => setEditedActivity({ ...editedActivity, special_comments: text })}
               multiline
               numberOfLines={4}
+              placeholder="Any special requirements or notes"
+              placeholderTextColor="#999"
             />
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -676,9 +970,73 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#000',
+    marginBottom: 4,
   },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  editSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#4A7C59',
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    backgroundColor: 'white',
+  },
+  chipActive: {
+    backgroundColor: '#4A7C59',
+    borderColor: '#4A7C59',
+  },
+  chipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  chipTextActive: {
+    color: 'white',
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+  unitOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+  },
+  unitOptionActive: {
+    backgroundColor: '#4A7C59',
+  },
+  unitOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  unitOptionTextActive: {
+    color: 'white',
   },
 });

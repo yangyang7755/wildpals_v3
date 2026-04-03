@@ -11,136 +11,91 @@ import {
   Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSignIn, useAuth as useClerkAuth } from '@clerk/clerk-expo';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 
 export default function Login() {
   const navigation = useNavigation();
-  const { login, user } = useAuth();
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const { signOut, isSignedIn } = useClerkAuth();
+  const { refreshUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       Alert.alert('Error', 'Please enter email and password');
       return;
     }
+    if (!isLoaded) return;
 
+    setLoading(true);
     try {
-      const success = await login(email, password);
-      if (success) {
-        // After login, the AuthContext will have loaded the user profile
-        // We need to use a small delay to let the state update propagate
-        setTimeout(async () => {
-          // Re-fetch the latest auth context
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('gender, location, bio')
-            .eq('id', authUser?.id)
-            .single();
+      // Sign out first if there's an existing session
+      if (isSignedIn) {
+        await signOut();
+        // Wait for sign-out to propagate
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
 
-          // Check if profile is complete (has gender and location)
-          const hasCompletedProfile = !!(profile?.gender && profile?.location);
-          
-          if (hasCompletedProfile) {
-            navigation.navigate('MainTabs' as never);
-          } else {
-            navigation.navigate('ProfileSetup' as never);
-          }
-        }, 200);
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        // Wait a moment for AuthContext to pick up the session, then navigate
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainTabs' as never }],
+          });
+        }, 500);
       } else {
-        Alert.alert('Error', 'Invalid email or password');
+        console.log('Sign in status:', result.status);
+        Alert.alert('Error', 'Sign in incomplete. Please try again.');
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      
-      // Safely extract error message
-      let errorMessage = 'Failed to log in. Please try again.';
-      
-      if (error && typeof error === 'object') {
-        if (error.message && typeof error.message === 'string') {
-          errorMessage = error.message;
-        } else if (error.error_description && typeof error.error_description === 'string') {
-          errorMessage = error.error_description;
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      
-      Alert.alert('Login Error', errorMessage);
+      const msg = error?.errors?.[0]?.longMessage || error?.message || 'Invalid email or password';
+      Alert.alert('Login Error', msg);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fillDemoAccount = () => {
-    setEmail('yangyang.ruohan.liu@gmail.com');
-    setPassword('123456');
-  };
-
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>
       </View>
-      
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
+          <Image source={require('../../assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
         </View>
         <Text style={styles.appName}>Wildpals</Text>
         <Text style={styles.title}>Welcome Back</Text>
-
         <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#4A7C59"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
+          <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#4A7C59"
+            value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
           <View style={styles.passwordContainer}>
-            <TextInput
-              style={styles.passwordInput}
-              placeholder="Password"
-              placeholderTextColor="#4A7C59"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.showButton}
-            >
-              <Text style={styles.showButtonText}>
-                {showPassword ? 'Hide' : 'Show'}
-              </Text>
+            <TextInput style={styles.passwordInput} placeholder="Password" placeholderTextColor="#4A7C59"
+              value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.showButton}>
+              <Text style={styles.showButtonText}>{showPassword ? 'Hide' : 'Show'}</Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Log in</Text>
+          <TouchableOpacity style={[styles.loginButton, loading && { opacity: 0.6 }]} onPress={handleLogin} disabled={loading}>
+            <Text style={styles.loginButtonText}>{loading ? 'Logging in...' : 'Log in'}</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.forgotPassword}
-            onPress={() => navigation.navigate('ForgotPassword' as never)}
-          >
+          <TouchableOpacity style={styles.forgotPassword}
+            onPress={() => navigation.navigate('ForgotPassword' as never)}>
             <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
           </TouchableOpacity>
-
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('SignUp' as never)}>
@@ -154,127 +109,25 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'white',
-  },
-  header: {
-    paddingTop: 60,
-    paddingLeft: 20,
-    paddingBottom: 10,
-  },
-  backButton: {
-    fontSize: 32,
-    color: '#4A7C59',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  logoContainer: {
-    width: 100,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  logoImage: {
-    width: 100,
-    height: 100,
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  form: {
-    gap: 16,
-  },
-  input: {
-    borderWidth: 2,
-    borderColor: '#4A7C59',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    color: '#4A7C59',
-  },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#4A7C59',
-    borderRadius: 12,
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    color: '#4A7C59',
-  },
-  showButton: {
-    paddingHorizontal: 16,
-  },
-  showButtonText: {
-    color: '#000',
-    opacity: 0.55,
-  },
-  loginButton: {
-    backgroundColor: '#4A7C59',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  loginButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  demoButton: {
-    backgroundColor: '#F0F9F4',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#4A7C59',
-  },
-  demoButtonText: {
-    color: '#4A7C59',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  forgotPassword: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  forgotPasswordText: {
-    color: '#000',
-    fontSize: 16,
-  },
-  signupContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  signupText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  signupLink: {
-    fontSize: 16,
-    color: '#4A7C59',
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: 'white' },
+  header: { paddingTop: 60, paddingLeft: 20, paddingBottom: 10 },
+  backButton: { fontSize: 32, color: '#4A7C59' },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
+  logoContainer: { width: 100, height: 100, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
+  logoImage: { width: 100, height: 100 },
+  appName: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 32 },
+  title: { fontSize: 32, fontWeight: 'bold', textAlign: 'center', marginBottom: 32 },
+  form: { gap: 16 },
+  input: { borderWidth: 2, borderColor: '#4A7C59', borderRadius: 12, paddingVertical: 16, paddingHorizontal: 20, fontSize: 16, color: '#4A7C59' },
+  passwordContainer: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: '#4A7C59', borderRadius: 12 },
+  passwordInput: { flex: 1, paddingVertical: 16, paddingHorizontal: 20, fontSize: 16, color: '#4A7C59' },
+  showButton: { paddingHorizontal: 16 },
+  showButtonText: { color: '#000', opacity: 0.55 },
+  loginButton: { backgroundColor: '#4A7C59', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 8 },
+  loginButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  forgotPassword: { alignItems: 'center', paddingVertical: 8 },
+  forgotPasswordText: { color: '#000', fontSize: 16 },
+  signupContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 16 },
+  signupText: { fontSize: 16, color: '#666' },
+  signupLink: { fontSize: 16, color: '#4A7C59', fontWeight: '600' },
 });

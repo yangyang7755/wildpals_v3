@@ -41,6 +41,7 @@ export default function CreateActivity() {
   const [distance, setDistance] = useState('');
   const [elevation, setElevation] = useState('');
   const [pace, setPace] = useState('');
+  const [paceUnit, setPaceUnit] = useState<'km/h' | 'mph'>('km/h');
   const [roadSurface, setRoadSurface] = useState<RoadSurface>('road');
   const [routeLink, setRouteLink] = useState('');
   const [cafeStop, setCafeStop] = useState('');
@@ -53,6 +54,7 @@ export default function CreateActivity() {
   // Running specific
   const [runningTerrain, setRunningTerrain] = useState<RunningTerrain>('road');
   const [runningPace, setRunningPace] = useState('');
+  const [runningPaceUnit, setRunningPaceUnit] = useState<'min/km' | 'min/mi'>('min/km');
   const [runningDistance, setRunningDistance] = useState('');
   const [runningElevation, setRunningElevation] = useState('');
   
@@ -160,7 +162,7 @@ export default function CreateActivity() {
         time,
         location,
         meetup_location: meetupLocation || location,
-        max_participants: parseInt(maxParticipants),
+        max_participants: parseInt(maxParticipants.replace(/[^0-9]/g, '')) || 10,
         special_comments: specialComments,
         activity_type: activityScheduleType,
       };
@@ -183,11 +185,13 @@ export default function CreateActivity() {
 
       // Add type-specific fields
       if (selectedType === 'cycling') {
-        if (distance) activityData.distance = parseFloat(distance);
-        if (elevation) activityData.elevation = parseFloat(elevation);
-        if (pace) {
-          activityData.pace = parseFloat(pace);
-          activityData.pace_unit = 'km/h';
+        const parsedDist = parseFloat(distance);
+        if (!isNaN(parsedDist)) activityData.distance = parsedDist;
+        const parsedElev = parseFloat(elevation);
+        if (!isNaN(parsedElev)) activityData.elevation = parsedElev;
+        if (pace.trim()) {
+          activityData.pace = pace.trim();
+          activityData.pace_unit = paceUnit;
         }
         activityData.distance_unit = 'km';
         activityData.elevation_unit = 'm';
@@ -199,11 +203,13 @@ export default function CreateActivity() {
         activityData.climbing_type = climbingType;
         if (gearRequired) activityData.gear_required = gearRequired;
       } else if (selectedType === 'running') {
-        if (runningDistance) activityData.distance = parseFloat(runningDistance);
-        if (runningElevation) activityData.elevation = parseFloat(runningElevation);
-        if (runningPace) {
-          activityData.pace = parseFloat(runningPace);
-          activityData.pace_unit = 'min/km';
+        const parsedDist = parseFloat(runningDistance);
+        if (!isNaN(parsedDist)) activityData.distance = parsedDist;
+        const parsedElev = parseFloat(runningElevation);
+        if (!isNaN(parsedElev)) activityData.elevation = parsedElev;
+        if (runningPace.trim()) {
+          activityData.pace = runningPace.trim();
+          activityData.pace_unit = runningPaceUnit;
         }
         activityData.distance_unit = 'km';
         activityData.elevation_unit = 'm';
@@ -222,11 +228,24 @@ export default function CreateActivity() {
         activityData.longitude = longitude;
       }
 
-      const { error } = await supabase
+      const { data: createdActivity, error } = await supabase
         .from('activities')
-        .insert([activityData]);
+        .insert([activityData])
+        .select('id')
+        .single() as { data: any; error: any };
 
       if (error) throw error;
+
+      // Auto-join the organizer as accepted participant
+      if (createdActivity?.id) {
+        await supabase
+          .from('join_requests')
+          .insert({
+            activity_id: createdActivity.id,
+            requester_id: user.id,
+            status: 'accepted',
+          } as any);
+      }
 
       Alert.alert(
         'Success!',
@@ -247,6 +266,7 @@ export default function CreateActivity() {
               setDistance('');
               setElevation('');
               setPace('');
+              setPaceUnit('km/h');
               setRoadSurface('road');
               setRouteLink('');
               setCafeStop('');
@@ -255,6 +275,7 @@ export default function CreateActivity() {
               setGearRequired('');
               setRunningTerrain('road');
               setRunningPace('');
+              setRunningPaceUnit('min/km');
               setRunningDistance('');
               setRunningElevation('');
               setClubMembersOnly(false);
@@ -538,14 +559,30 @@ export default function CreateActivity() {
               />
             </View>
             
-            <TextInput
-              style={styles.input}
-              placeholder="Pace (km/h)"
-              placeholderTextColor="#999"
-              value={pace}
-              onChangeText={setPace}
-              keyboardType="decimal-pad"
-            />
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder={`Pace, e.g. 28 or 28-30 (${paceUnit})`}
+                placeholderTextColor="#999"
+                value={pace}
+                onChangeText={setPace}
+                keyboardType="decimal-pad"
+              />
+              <View style={styles.unitToggle}>
+                <TouchableOpacity
+                  style={[styles.unitOption, paceUnit === 'km/h' && styles.unitOptionActive]}
+                  onPress={() => setPaceUnit('km/h')}
+                >
+                  <Text style={[styles.unitOptionText, paceUnit === 'km/h' && styles.unitOptionTextActive]}>km/h</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.unitOption, paceUnit === 'mph' && styles.unitOptionActive]}
+                  onPress={() => setPaceUnit('mph')}
+                >
+                  <Text style={[styles.unitOptionText, paceUnit === 'mph' && styles.unitOptionTextActive]}>mph</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             <TextInput
               style={styles.input}
@@ -643,13 +680,29 @@ export default function CreateActivity() {
               />
             </View>
             
-            <TextInput
-              style={styles.input}
-              placeholder="Pace (min/km, e.g., 5:30)"
-              placeholderTextColor="#999"
-              value={runningPace}
-              onChangeText={setRunningPace}
-            />
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder={`Pace, e.g. 5:30 or 5:00-5:30 (${runningPaceUnit})`}
+                placeholderTextColor="#999"
+                value={runningPace}
+                onChangeText={setRunningPace}
+              />
+              <View style={styles.unitToggle}>
+                <TouchableOpacity
+                  style={[styles.unitOption, runningPaceUnit === 'min/km' && styles.unitOptionActive]}
+                  onPress={() => setRunningPaceUnit('min/km')}
+                >
+                  <Text style={[styles.unitOptionText, runningPaceUnit === 'min/km' && styles.unitOptionTextActive]}>min/km</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.unitOption, runningPaceUnit === 'min/mi' && styles.unitOptionActive]}
+                  onPress={() => setRunningPaceUnit('min/mi')}
+                >
+                  <Text style={[styles.unitOptionText, runningPaceUnit === 'min/mi' && styles.unitOptionTextActive]}>min/mi</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             <TextInput
               style={styles.input}
@@ -1015,5 +1068,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 4,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  unitOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+  },
+  unitOptionActive: {
+    backgroundColor: '#4A7C59',
+  },
+  unitOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  unitOptionTextActive: {
+    color: 'white',
   },
 });

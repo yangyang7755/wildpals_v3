@@ -5,6 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, StyleSheet } from 'react-native';
 import * as Linking from 'expo-linking';
+import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
+import Constants from 'expo-constants';
+import { tokenCache } from './native/lib/clerk-token-cache';
 
 // Import screens
 import SplashScreen from './native/screens/SplashScreen';
@@ -76,6 +79,8 @@ function TabScreens() {
 }
 
 export default function App() {
+  const clerkPublishableKey = Constants.expoConfig?.extra?.CLERK_PUBLISHABLE_KEY || '';
+
   const linking = {
     prefixes: ['wildpals://', 'https://xikaltnufqbysnrsjzwa.supabase.co'],
     config: {
@@ -86,31 +91,39 @@ export default function App() {
     },
   };
 
+  if (!clerkPublishableKey) {
+    console.error('Missing Clerk Publishable Key in app.json extra config');
+  }
+
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer linking={linking}>
-          <StatusBar style="dark" />
-          <Stack.Navigator
-            initialRouteName="Splash"
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="Splash" component={SplashScreen} />
-            <Stack.Screen name="Login" component={Login} />
-            <Stack.Screen name="SignUp" component={SignUp} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
-            <Stack.Screen name="ResetPassword" component={ResetPassword} />
-            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
-            <Stack.Screen name="TermsOfService" component={TermsOfService} />
-            <Stack.Screen name="EmailVerification" component={EmailVerification} />
-            <Stack.Screen name="ProfileSetup" component={ProfileSetup} />
-            <Stack.Screen name="MainTabs" component={TabScreens} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+      <ClerkLoaded>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <NavigationContainer linking={linking}>
+              <StatusBar style="dark" />
+              <Stack.Navigator
+                initialRouteName="Splash"
+                screenOptions={{
+                  headerShown: false,
+                }}
+              >
+                <Stack.Screen name="Splash" component={SplashScreen} />
+                <Stack.Screen name="Login" component={Login} />
+                <Stack.Screen name="SignUp" component={SignUp} />
+                <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+                <Stack.Screen name="ResetPassword" component={ResetPassword} />
+                <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicy} />
+                <Stack.Screen name="TermsOfService" component={TermsOfService} />
+                <Stack.Screen name="EmailVerification" component={EmailVerification} />
+                <Stack.Screen name="ProfileSetup" component={ProfileSetup} />
+                <Stack.Screen name="MainTabs" component={TabScreens} />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }
 

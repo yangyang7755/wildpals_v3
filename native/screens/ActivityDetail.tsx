@@ -30,7 +30,8 @@ interface Activity {
   special_comments: string;
   distance?: number;
   elevation?: number;
-  pace?: number;
+  pace?: number | string;
+  pace_unit?: string;
   road_surface?: string;
   route_link?: string;
   cafe_stop?: string;
@@ -284,7 +285,8 @@ export default function ActivityDetail() {
     }
   };
 
-  const isOrganizer = user?.id === activity?.organizer_id;
+  const isOrganizer = user?.id === activity?.organizer_id || 
+    (activity?.profiles?.email && user?.email && activity.profiles.email === user.email);
   const isFull = participants.length >= (activity?.max_participants || 0);
   const canJoin = !isOrganizer && !userStatus && !isFull;
   // Only show chat if user has been explicitly accepted (joined the activity)
@@ -462,7 +464,7 @@ export default function ActivityDetail() {
               <Text style={styles.infoText}>⛰️ Elevation: {activity.elevation} m</Text>
             )}
             {activity.pace && (
-              <Text style={styles.infoText}>⚡ Pace: {activity.pace} kph</Text>
+              <Text style={styles.infoText}>⚡ Pace: {activity.pace} {activity.pace_unit || 'km/h'}</Text>
             )}
             {activity.cafe_stop && (
               <Text style={styles.infoText}>☕ Cafe Stop: {activity.cafe_stop}</Text>
@@ -525,13 +527,16 @@ export default function ActivityDetail() {
           </TouchableOpacity>
         )}
 
-        {/* Show Activity Complete when full */}
-        {!isOrganizer && isFull && !userStatus && (
-          <View style={[styles.statusBadge, styles.completeBadge]}>
-            <Text style={[styles.statusText, styles.completeText]}>Activity Complete</Text>
-            <Text style={[styles.statusSubtext, styles.completeSubtext]}>Max participants reached</Text>
+        {/* Organizer badge */}
+        {isOrganizer && (
+          <View style={[styles.statusBadge, styles.joinedBadge]}>
+            <Text style={[styles.statusText, styles.joinedText]}>👑 You're the Organizer</Text>
+            <Text style={[styles.statusSubtext, styles.joinedSubtext]}>Tap ⚙️ to manage</Text>
           </View>
         )}
+
+        {/* Show pending status */}
+        {!isOrganizer && userStatus === 'pending' && (
           <TouchableOpacity
             style={styles.statusBadge}
             onPress={handleCancelRequest}

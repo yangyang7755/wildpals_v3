@@ -227,28 +227,15 @@ export default function Explore() {
       matchesDate = activityDate >= today && activityDate < nextMonth;
     }
     
-    // Location filtering
+    // All activities pass location filter (removed location picker)
     let matchesLocation = true;
-    if (selectedLocation !== 'all') {
-      matchesLocation = (activity.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
-    }
     
     return matchesSearch && matchesType && matchesDate && matchesLocation;
   });
 
   // Sort activities: selected location first (if not 'all'), then by date
   const sortedActivities = [...filteredActivities].sort((a, b) => {
-    // If specific location selected, prioritize those activities
-    if (selectedLocation !== 'all') {
-      const aMatchesLocation = (a.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
-      const bMatchesLocation = (b.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
-      
-      // Local activities come first
-      if (aMatchesLocation && !bMatchesLocation) return -1;
-      if (!aMatchesLocation && bMatchesLocation) return 1;
-    }
-    
-    // Then sort by date
+    // Sort by date
     return new Date(a.date).getTime() - new Date(b.date).getTime();
   });
 
@@ -586,41 +573,7 @@ export default function Explore() {
             onChangeText={setSearchQuery}
           />
         </View>
-        
-        <TouchableOpacity 
-          style={styles.locationButton}
-          onPress={() => setShowLocationPicker(!showLocationPicker)}
-        >
-          <Text style={styles.locationButtonText}>
-            {selectedLocation === 'all' ? '📍 All' : `📍 ${selectedLocation}`}
-          </Text>
-        </TouchableOpacity>
       </View>
-
-      {showLocationPicker && (
-        <View style={styles.locationPicker}>
-          {['all', 'London', 'Oxford', 'Boston'].map((location) => (
-            <TouchableOpacity
-              key={location}
-              style={[
-                styles.locationOption,
-                selectedLocation === location && styles.locationOptionActive
-              ]}
-              onPress={() => {
-                setSelectedLocation(location as any);
-                setShowLocationPicker(false);
-              }}
-            >
-              <Text style={[
-                styles.locationOptionText,
-                selectedLocation === location && styles.locationOptionTextActive
-              ]}>
-                {location === 'all' ? 'All Locations' : location}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
 
       <View style={styles.filterTabs}>
         {['all', 'cycling', 'climbing', 'running'].map((type) => (
