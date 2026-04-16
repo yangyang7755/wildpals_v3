@@ -52,7 +52,8 @@ export default function Joined() {
   const [chatPreviews, setChatPreviews] = useState<Record<string, ChatPreview>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedTab, setSelectedTab] = useState<'joined' | 'pending'>('joined');
+  const [selectedTab, setSelectedTab] = useState<'joined' | 'pending' | 'completed'>('joined');
+  const [organizedActivities, setOrganizedActivities] = useState<any[]>([]);
 
   useEffect(() => {
     loadJoinRequests();
@@ -88,6 +89,21 @@ export default function Joined() {
 
       if (error) throw error;
       setJoinRequests(data || []);
+
+      // Load activities organized by user
+      const { data: organized } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          profiles:organizer_id (
+            full_name,
+            email
+          )
+        `)
+        .eq('organizer_id', user.id)
+        .order('date', { ascending: false });
+
+      setOrganizedActivities(organized || []);
 
       // Load chat previews for accepted activities
       const acceptedActivityIds = (data || [])
@@ -180,11 +196,27 @@ export default function Joined() {
     navigation.navigate('ActivityChat' as never, { activityId } as never);
   };
 
+  const today = new Date().toISOString().split('T')[0];
+
   const filteredRequests = joinRequests.filter((request) => {
-    if (selectedTab === 'joined') return request.status === 'accepted';
+    const activityDate = request.activities?.date || '';
+    const isPast = activityDate < today;
+
+    if (selectedTab === 'joined') return request.status === 'accepted' && !isPast;
     if (selectedTab === 'pending') return request.status === 'pending';
+    if (selectedTab === 'completed') return request.status === 'accepted' && isPast;
     return true;
   });
+
+  // For completed tab, also include organized activities that are past
+  const completedOrganized = selectedTab === 'completed'
+    ? organizedActivities.filter(a => a.date < today)
+    : [];
+
+  // For joined tab, also include organized activities that are upcoming
+  const upcomingOrganized = selectedTab === 'joined'
+    ? organizedActivities.filter(a => a.date >= today)
+    : [];
 
   const renderJoinRequest = ({ item }: { item: JoinRequest }) => {
     const activity = item.activities;
@@ -280,8 +312,9 @@ export default function Joined() {
 
       <View style={styles.filterTabs}>
         {[
-          { id: 'joined', label: 'Joined' },
+          { id: 'joined', label: 'Upcoming' },
           { id: 'pending', label: 'Requests' },
+          { id: 'completed', label: 'Completed' },
         ].map((tab) => (
           <TouchableOpacity
             key={tab.id}
@@ -301,20 +334,55 @@ export default function Joined() {
         ))}
       </View>
 
-      {filteredRequests.length === 0 ? (
+      {filteredRequests.length === 0 && upcomingOrganized.length === 0 && completedOrganized.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>✅</Text>
-          <Text style={styles.emptyTitle}>No activities yet</Text>
+          <Text style={styles.emptyIcon}>{selectedTab === 'completed' ? '📋' : '✅'}</Text>
+          <Text style={styles.emptyTitle}>
+            {selectedTab === 'completed' ? 'No completed activities' : 'No activities yet'}
+          </Text>
           <Text style={styles.emptyText}>
             {selectedTab === 'pending' 
               ? 'No pending requests'
+              : selectedTab === 'completed'
+              ? 'Activities you\'ve joined or organized will appear here after their date'
               : 'Join activities from the Explore page to see them here'}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={filteredRequests}
-          renderItem={renderJoinRequest}
+          data={[
+            ...upcomingOrganized.map(a => ({ id: `org-${a.id}`, isOrganized: true, activities: a, status: 'accepted' as const })),
+            ...completedOrganized.map(a => ({ id: `org-${a.id}`, isOrganized: true, activities: a, status: 'accepted' as const })),
+            ...filteredRequests,
+          ]}
+          renderItem={({ item }) => {
+            if ((item as any).isOrganized) {
+              const activity = (item as any).activities;
+              const isPast = activity.date < today;
+              return (
+                <TouchableOpacity
+                  style={styles.activityCard}
+                  onPress={() => navigation.navigate('ActivityDetail' as never, { activityId: activity.id } as never)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cardContent}>
+                    <View style={styles.activityIcon}>
+                      <Text style={styles.activityIconText}>
+                        {activity.type === 'cycling' ? '🚴' : activity.type === 'climbing' ? '🧗' : activity.type === 'running' ? '🏃' : '🎉'}
+                      </Text>
+                    </View>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityTitle} numberOfLines={1}>{activity.title}</Text>
+                      <Text style={styles.noMessageText}>
+                        👑 Organized by you {isPast ? '• Completed' : `• ${activity.date}`}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+            return renderJoinRequest({ item: item as JoinRequest });
+          }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={

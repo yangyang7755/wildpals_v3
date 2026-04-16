@@ -70,12 +70,14 @@ export default function ClubDetail() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [recentMessages, setRecentMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'events' | 'members' | 'chat'>('events');
+  const [selectedTab, setSelectedTab] = useState<'events' | 'calendar' | 'members' | 'chat'>('events');
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinMessage, setJoinMessage] = useState('');
   const [membershipStatus, setMembershipStatus] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadClubData();
@@ -165,14 +167,17 @@ export default function ClubDetail() {
           type, 
           organizer_id,
           location,
+          activity_type,
+          is_recurrent_template,
+          recurrence_day_of_week,
           profiles:organizer_id (
             full_name
           )
         `)
-        .contains('visible_to_clubs', [clubId]) // Only activities visible to this club
-        .gte('date', today) // Only future activities
+        .contains('visible_to_clubs', [clubId])
+        .or(`date.gte.${today},is_recurrent_template.eq.true`)
         .order('date', { ascending: true })
-        .limit(20);
+        .limit(50);
 
       if (activitiesError) throw activitiesError;
 
@@ -381,6 +386,14 @@ export default function ClubDetail() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.tab, selectedTab === 'calendar' && styles.tabActive]}
+            onPress={() => setSelectedTab('calendar')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'calendar' && styles.tabTextActive]}>
+              📅 Calendar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.tab, selectedTab === 'members' && styles.tabActive]}
             onPress={() => setSelectedTab('members')}
           >
@@ -462,6 +475,136 @@ export default function ClubDetail() {
               );
             })
           )}
+        </ScrollView>
+      ) : selectedTab === 'calendar' ? (
+        <ScrollView style={styles.tabContent}>
+          {/* Calendar Navigation */}
+          <View style={styles.calendarNav}>
+            <TouchableOpacity onPress={() => {
+              const prev = new Date(calendarMonth);
+              prev.setMonth(prev.getMonth() - 1);
+              setCalendarMonth(prev);
+            }}>
+              <Text style={styles.calendarNavArrow}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.calendarMonthTitle}>
+              {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </Text>
+            <TouchableOpacity onPress={() => {
+              const next = new Date(calendarMonth);
+              next.setMonth(next.getMonth() + 1);
+              setCalendarMonth(next);
+            }}>
+              <Text style={styles.calendarNavArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Day Headers */}
+          <View style={styles.calendarRow}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <Text key={d} style={styles.calendarDayHeader}>{d}</Text>
+            ))}
+          </View>
+
+          {/* Calendar Grid */}
+          {(() => {
+            const year = calendarMonth.getFullYear();
+            const month = calendarMonth.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date().toISOString().split('T')[0];
+
+            // Build set of dates with events (including recurrent)
+            const eventDates = new Set<string>();
+            const eventsByDate: Record<string, any[]> = {};
+            activities.forEach(a => {
+              if ((a as any).activity_type === 'recurrent' && (a as any).recurrence_day_of_week !== undefined) {
+                // Generate all occurrences in this month
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const date = new Date(year, month, d);
+                  if (date.getDay() === (a as any).recurrence_day_of_week) {
+                    const ds = date.toISOString().split('T')[0];
+                    eventDates.add(ds);
+                    if (!eventsByDate[ds]) eventsByDate[ds] = [];
+                    eventsByDate[ds].push(a);
+                  }
+                }
+              } else if (a.date) {
+                eventDates.add(a.date);
+                if (!eventsByDate[a.date]) eventsByDate[a.date] = [];
+                eventsByDate[a.date].push(a);
+              }
+            });
+
+            const weeks: any[][] = [];
+            let currentWeek: any[] = new Array(firstDay).fill(null);
+            for (let d = 1; d <= daysInMonth; d++) {
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              currentWeek.push({ day: d, date: dateStr, hasEvent: eventDates.has(dateStr), isToday: dateStr === today });
+              if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+            }
+            if (currentWeek.length > 0) {
+              while (currentWeek.length < 7) currentWeek.push(null);
+              weeks.push(currentWeek);
+            }
+
+            return (
+              <>
+                {weeks.map((week, wi) => (
+                  <View key={wi} style={styles.calendarRow}>
+                    {week.map((cell, ci) => (
+                      <TouchableOpacity
+                        key={ci}
+                        style={[
+                          styles.calendarCell,
+                          cell?.isToday && styles.calendarCellToday,
+                          cell?.date === selectedDate && styles.calendarCellSelected,
+                        ]}
+                        onPress={() => cell && setSelectedDate(cell.date === selectedDate ? null : cell.date)}
+                        disabled={!cell}
+                      >
+                        {cell && (
+                          <>
+                            <Text style={[
+                              styles.calendarDayText,
+                              cell.isToday && styles.calendarDayTextToday,
+                              cell.date === selectedDate && styles.calendarDayTextSelected,
+                            ]}>{cell.day}</Text>
+                            {cell.hasEvent && <View style={styles.calendarDot} />}
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+
+                {/* Events for selected date */}
+                {selectedDate && eventsByDate[selectedDate] && (
+                  <View style={{ marginTop: 16 }}>
+                    <Text style={styles.sectionTitle}>
+                      Events on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </Text>
+                    {eventsByDate[selectedDate].map((a: any, i: number) => (
+                      <TouchableOpacity
+                        key={`${a.id}-${i}`}
+                        style={styles.activityCard}
+                        onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: a.id })}
+                      >
+                        <View style={styles.activityInfo}>
+                          <Text style={styles.activityTitle}>{a.title}</Text>
+                          <Text style={styles.activityDate}>{a.time} • {a.location}</Text>
+                        </View>
+                        <Text style={styles.activityArrow}>→</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {selectedDate && !eventsByDate[selectedDate] && (
+                  <Text style={{ textAlign: 'center', color: '#999', marginTop: 16 }}>No events on this day</Text>
+                )}
+              </>
+            );
+          })()}
         </ScrollView>
       ) : selectedTab === 'members' ? (
         <ScrollView style={styles.tabContent}>
@@ -1096,5 +1239,73 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  calendarNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  calendarNavArrow: {
+    fontSize: 24,
+    color: '#4A7C59',
+    paddingHorizontal: 12,
+  },
+  calendarMonthTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  calendarDayHeader: {
+    width: 40,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
+    paddingVertical: 8,
+  },
+  calendarCell: {
+    width: 40,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  calendarCellToday: {
+    backgroundColor: '#E8F5E9',
+  },
+  calendarCellSelected: {
+    backgroundColor: '#4A7C59',
+  },
+  calendarDayText: {
+    fontSize: 15,
+    color: '#000',
+  },
+  calendarDayTextToday: {
+    fontWeight: '700',
+    color: '#4A7C59',
+  },
+  calendarDayTextSelected: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  calendarDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4A7C59',
+    marginTop: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
 });

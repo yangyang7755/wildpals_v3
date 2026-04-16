@@ -419,13 +419,28 @@ export default function ActivityDetail() {
             styles.participantCount,
             isFull && styles.participantCountFull
           ]}>
-            {participants.length}/{activity.max_participants} spots
+            {isOrganizer ? participants.length + 1 : participants.length}/{activity.max_participants} spots
             {isFull && ' (Full)'}
           </Text>
           
-          {participants.length > 0 ? (
+          {/* Always show organizer first */}
+          {activity.profiles && (
             <View style={styles.participantBubbles}>
-              {participants.map((participant) => (
+              <TouchableOpacity
+                style={styles.participantBubble}
+                onPress={() => navigation.navigate('UserProfile' as never, { userId: activity.organizer_id } as never)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.participantAvatar, { backgroundColor: '#4A7C59' }]}>  
+                  <Text style={styles.participantInitial}>
+                    {activity.profiles.full_name?.charAt(0).toUpperCase() || '?'}
+                  </Text>
+                </View>
+                <Text style={styles.participantBubbleName} numberOfLines={1}>
+                  {activity.profiles.full_name} 👑
+                </Text>
+              </TouchableOpacity>
+              {participants.filter(p => p.user_id !== activity.organizer_id).map((participant) => (
                 <TouchableOpacity
                   key={participant.id}
                   style={styles.participantBubble}
@@ -443,7 +458,8 @@ export default function ActivityDetail() {
                 </TouchableOpacity>
               ))}
             </View>
-          ) : (
+          )}
+          {!activity.profiles && participants.length === 0 && (
             <Text style={styles.noParticipantsText}>No participants yet</Text>
           )}
         </View>

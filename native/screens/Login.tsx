@@ -46,13 +46,35 @@ export default function Login() {
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        // Wait a moment for AuthContext to pick up the session, then navigate
         setTimeout(() => {
           navigation.reset({
             index: 0,
             routes: [{ name: 'MainTabs' as never }],
           });
         }, 500);
+      } else if (result.status === 'needs_second_factor') {
+        // Handle 2FA - attempt with email code
+        try {
+          const secondFactor = await signIn.prepareSecondFactor({ strategy: 'email_code' as any });
+          Alert.prompt(
+            'Verification Code',
+            'A code was sent to your email. Enter it below:',
+            async (code) => {
+              if (!code) return;
+              try {
+                const result2 = await signIn.attemptSecondFactor({ strategy: 'email_code' as any, code });
+                if (result2.status === 'complete') {
+                  await setActive({ session: result2.createdSessionId });
+                  navigation.reset({ index: 0, routes: [{ name: 'MainTabs' as never }] });
+                }
+              } catch (e: any) {
+                Alert.alert('Error', e?.errors?.[0]?.longMessage || 'Invalid code');
+              }
+            }
+          );
+        } catch {
+          Alert.alert('Error', 'Two-factor authentication is required but could not be completed. Please contact support.');
+        }
       } else {
         console.log('Sign in status:', result.status);
         Alert.alert('Error', 'Sign in incomplete. Please try again.');

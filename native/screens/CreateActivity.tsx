@@ -172,8 +172,18 @@ export default function CreateActivity() {
         activityData.date = date;
         activityData.is_recurrent_template = false;
       } else if (activityScheduleType === 'recurrent') {
-        // For recurrent, use the date as the first occurrence
-        activityData.date = date || new Date().toISOString().split('T')[0];
+        // Calculate the next occurrence of the selected day of week
+        if (!date) {
+          const now = new Date();
+          const currentDay = now.getDay();
+          let daysUntil = recurrenceDayOfWeek - currentDay;
+          if (daysUntil <= 0) daysUntil += 7;
+          const nextDate = new Date(now);
+          nextDate.setDate(nextDate.getDate() + daysUntil);
+          activityData.date = nextDate.toISOString().split('T')[0];
+        } else {
+          activityData.date = date;
+        }
         activityData.recurrence_day_of_week = recurrenceDayOfWeek;
         activityData.is_recurrent_template = true; // Mark as template
       } else if (activityScheduleType === 'multi_day') {

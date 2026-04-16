@@ -82,6 +82,28 @@ export default function Explore() {
 
       // Get today's date in YYYY-MM-DD format
       const today = new Date().toISOString().split('T')[0];
+
+      // Helper: generate only the next occurrence for a recurrent activity
+      const expandRecurrent = (activity: any): any[] => {
+        if (activity.activity_type !== 'recurrent' || !activity.is_recurrent_template) return [activity];
+        const dayOfWeek = activity.recurrence_day_of_week ?? 1;
+        const now = new Date();
+        // Find next occurrence of the target day
+        let next = new Date(now);
+        const currentDay = next.getDay();
+        let daysUntil = dayOfWeek - currentDay;
+        if (daysUntil < 0) daysUntil += 7;
+        if (daysUntil === 0 && now.getHours() >= 23) daysUntil = 7;
+        next.setDate(next.getDate() + daysUntil);
+        
+        const dateStr = next.toISOString().split('T')[0];
+        return [{
+          ...activity,
+          id: `${activity.id}_${dateStr}`,
+          _originalId: activity.id,
+          date: dateStr,
+        }];
+      };
       
       const { data, error } = await supabase
         .from('activities')
@@ -92,15 +114,22 @@ export default function Explore() {
             email
           )
         `)
-        .gte('date', today) // Only get activities from today onwards
-        .order('date', { ascending: true }) // Soonest first
+        .or(`date.gte.${today},is_recurrent_template.eq.true`)
+        .order('date', { ascending: true })
         .order('time', { ascending: true })
         .limit(50);
 
       if (error) throw error;
 
+      // Expand recurrent activities into upcoming occurrences
+      const rawData = data || [];
+      const expandedData: any[] = [];
+      for (const activity of rawData) {
+        expandedData.push(...expandRecurrent(activity));
+      }
+
       // Filter out private club activities that user doesn't have access to
-      let filteredData = data || [];
+      let filteredData = expandedData;
       
       if (user) {
         // Get user's club memberships
@@ -432,7 +461,7 @@ export default function Explore() {
           styles.activityCard,
           item.type === 'social' && styles.socialActivityCard
         ]}
-        onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: item.id })}
+        onPress={() => (navigation as any).navigate('ActivityDetail', { activityId: (item as any)._originalId || item.id })}
         activeOpacity={0.7}
       >
         {/* Activity Type Label */}
@@ -637,7 +666,7 @@ export default function Explore() {
           <MapViewComponent
             activities={sortedActivities}
             onMarkerPress={(activity) => {
-              (navigation as any).navigate('ActivityDetail', { activityId: activity.id });
+              (navigation as any).navigate('ActivityDetail', { activityId: (activity as any)._originalId || activity.id });
             }}
           />
         )
