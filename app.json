@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wildpals.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "icon": "./assets/icon.png",
       "associatedDomains": [
         "applinks:xikaltnufqbysnrsjzwa.supabase.co"
